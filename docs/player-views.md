@@ -121,7 +121,7 @@ Public Event 不提供可无限回溯的完整操作日志。已完成但错过�
 
 - 只针对本次从 **DrawPile** 正常取得、尚在**可决定如何处理**阶段的牌；仅当前行动者可获知真实数字。
 - **不是 Temporary Reveal**，不使用 Peek/Spy 的 15 秒上限。
-- 有效期依当前抽牌处理决策：通常 AwaitingCardDecision 时有效；决定弃牌/能力或正式冻结 Replace 后即结束，而不必等待整个 Turn 完成。
+- 有效期依当前抽牌处理决策：通常 AwaitingCardDecision 时有效；决定弃牌/能力或正式冻结 Replace 后即结束，而不必等待整个 Turn 完成。**例外**：Peek/Spy 目标未确认、原能力与 Turn 窗口内合法 Undo 前置弃牌时，同一主抽牌重回 AwaitingCardDecision，当前阶段可恢复其私人数字读取许可。
 - 重连且仍处于同一有效处理阶段时，可恢复**同一张已取得的牌**，不能重抽或重新给予 90 秒。
 - 权限失效后不得继续通过旧私人结果查询；牌正式弃到 DiscardPile 后数字由公开牌堆事实提供。
 - 抽到 DrawPile 的最后一张不使当前私有处理权限提前失效，须允许当前合法动作完成后 Round 才 Settling。
@@ -130,10 +130,10 @@ Public Event 不提供可无限回溯的完整操作日志。已完成但错过�
 
 **InitialReveal**：每位玩家每轮最多看两张**不同**的初始牌，45 秒为该玩家**总机会**。提前结束会放弃剩余机会，尚有机会时应二次确认；确认期间不暂停时限。所有玩家的初始查看终结后才授予首个 Turn。
 
-**Peek / Spy**：Peek 只能查看自己一张背面牌，Spy 只能查看其他玩家一张背面牌；合法目标确认后固定服务端具体 Card。授权最长 15 秒，并在原 Turn 90 秒截止之前结束。目标确认后不得重选；若结果尚未实际展示，提前关闭需要防误触确认；已展示可直接关闭。确认提示不暂停倒计时。
+**Peek / Spy**：Peek 只能查看自己一张背面牌，Spy 只能查看其他玩家一张背面牌；正式弃牌并选择使用能力时开启该次最多 15 秒窗口，合法目标必须在原窗口及 Turn 90 秒截止内确认并绑定具体 Card。确认后只提供**原能力窗口剩余的**秘密授权，不重新计时、不得重选；尚未确认目标亦可主动 End。确认提示不暂停倒计时。
 
-- 只向特定合法查看者提供目标数字；Public Event 仅公开合法的使用者和确认时目标位置（Spy 另公开目标玩家）。
-- 初始查看的个人精确剩余时间与 Peek/Spy 的精确授权时间只提供给**本人**，不向其他玩家提供。
+- 只向特定合法查看者提供目标数字；Public Event 仅公开合法的使用者和确认时目标位置（Spy 另公开目标玩家）。目标未确认时合法 Undo 的独立公共事件只表达原弃牌 Event 引用与补偿后的公开弃牌堆事实，绝不包含隐藏牌值或内部 Card ID。
+- InitialReveal 的全员共享截止事实及个人当前授权的精确信息遵循既定公开/私人区分；Peek/Spy 的精确能力剩余时间只提供给**本人**，不向其他玩家提供。
 - 查看授权结束、超时、所属 Turn/Round/Game 有效终结或强制中止时失效。断线不暂停/重置；原授权仍有效才恢复**同一目标及剩余时间**。
 - 主动关闭、到期和中止的竞合只能产生一次终结。旧目标不可被重新选取，旧授权不能重开；也不提供永久 PlayerKnowledge。
 - 玩家已看到的数字可凭记忆使用，但服务端无法消除既有记忆；这不构成新的秘密读取权限。
@@ -206,7 +206,7 @@ Public Event 不提供可无限回溯的完整操作日志。已完成但错过�
 - 新 Round 自动开始后，上一轮完整结算仍可查询；断线玩家不会因为错过瞬时通知而失去最新结算。
 - Game 正常 Completed 后，最后一轮完整结算、Game 最终累计与 Winner 仍可见。
 - Game 后续 Aborted 不会回写历史 Completed Round；未完成的活动 Round Aborted 无正式得分，也**不自动揭示所有隐藏牌**。
-- Room 关闭不改写历史。Room 又开始另一 Game 后，对旧 Game 结果的跨局查询入口及范围**未决**，不在本文件中默认开放无限历史。
+- Room 关闭不改写历史。Room 又开始另一 Game 后，原 Game Participants 可在**公开、有限、可配置的独立保留政策**及原授权范围内，按 Game Identity 查询该 **Completed Game** 正式终局结果；新成员不自动获得旧 Game 访问权，不提供完整 Event Replay 或过期 Temporary Reveal。
 
 ## 10. 断线、重复通知与安全失效
 
@@ -227,7 +227,7 @@ Public Event 不提供可无限回溯的完整操作日志。已完成但错过�
 | PV-A04 | DiscardPile 取 9 | 只允许 Replace，不能 Spy |
 | PV-A05 | Peek 确认自己位置 2 | 公开 Peek + 位置，数字只给本人限时读取 |
 | PV-A06 | Spy 确认 B 位置 3 | 公开玩家和位置，不公开秘密数字 |
-| PV-A07 | Turn 第 83 秒确认 Spy | 最多再读 7 秒；其他人只见 Turn 总截止 |
+| PV-A07 | Turn 第 83 秒**首次正式弃牌并使用 Spy** | 能力最多 7 秒；若更早开启能力则截止可能更早，目标确认不能刷新 15 秒 |
 | PV-A08 | Peek/Spy 断线重连 | 恢复同一授权及剩余时间，不重选、不延长 |
 | PV-A09 | Swap 背面↔背面 | 公开双方位置，不公开数字或 Card ID |
 | PV-A10 | Swap 正面↔背面及正面↔正面 | 每张 Card 正反面原样移动，正面数字持续公开 |
@@ -271,3 +271,12 @@ Public Event 不提供可无限回溯的完整操作日志。已完成但错过�
 7. HTTP、WebSocket、ORM、DB、事务、时钟、Redis、消息队列、客户端缓存等实现。
 
 本文件不改变 `docs/game-rules.md` 或既有状态机规则。若将来发现实际冲突，先报告并由用户确认调整，不能为实现方便自行补充或改写玩法。
+
+
+## 13. Phase 4 可见性与协议修订（2026-11-05）
+
+- **Public Event**：Game 内唯一 Event Identity、所属 Game、适用 Round/Turn、可比较公开进展、秒级服务器提交时间、稳定公共事件类型与独立语义版本。一次原子业务提交可产生多条独立送达 Event，不保证完整回放；按 Event Identity 去重，最新 Player View 权威，未知必需事件语义不可逐条模拟领域效果。
+- **正式弃牌补偿**：CM-43～CM-49 只在 Peek/Spy 目标尚未确认、原能力窗口与 Turn 截止未过、每 Turn 额度未用时允许 Undo。恢复原主抽牌完整决策及当前可用私人数字；两条已正式成立的原弃牌与补偿 Event 各保留，撤销 Event 引用原事件身份。不可把它扩展为任意 Replace/Swap 回滚。
+- **结束原因保密**：Peek/Spy 主动结束、15 秒或 90 秒结束均不通过 Turn Completed 公共事件的类型、来源或其他专有 Event 直接区分原因。
+- **历史与版本**：已完成 Game 的原 Participants 可以按独立有限保留政策查询正式终局；Game Player View、Decision Context、Public Event 等各自声明必需语义版本，同 Game 必需语义冻结；Lobby Room View 与在线通知另按 Lobby epoch 隔离；Command Result 与原结局/当前同步进展分别处理。
+- 上述契约以 [`phase4-consolidated-contract.md`](phase4-consolidated-contract.md) 和 [`phase4-command-acceptance-matrix.md`](phase4-command-acceptance-matrix.md) 为可核对的 Phase 4 审阅文档。
