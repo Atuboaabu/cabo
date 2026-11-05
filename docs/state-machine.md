@@ -140,7 +140,7 @@ FinalTurns 是独立状态；不建立 EndingPending。抽牌堆是否为空是�
 
 ### 4.3 InitialReveal
 
-每轮重新洗牌、每人发四张背面牌；每人最多秘密查看两张**不同位置**的初始牌。每人总时限 45 秒，自 Round 正式开放其机会起计。可提前结束（剩余机会作废），仍有未看机会时应提示二次确认；确认提示不暂停时限。断线不结束或重置机会。全部成员初始查看流程终结前不得创建首个 Turn，超时不表示实际看满两张。
+每轮重新洗牌、每人发四张背面牌；每人最多秘密查看两张**不同位置**的初始牌。全员共享本轮绝对 45 秒，自 Round 正式开放共同窗口起计；确认两张配额不自动个人 End。可提前结束（剩余机会作废），仍有未看机会时应提示二次确认；确认提示不暂停时限。断线不结束或重置机会。全部成员初始查看流程终结前不得创建首个 Turn，超时不表示实际看满两张。
 
 ### 4.4 CABO 与 FinalTurns
 
@@ -193,8 +193,9 @@ Round 计算真实手牌总和、CABO 成败及处罚、最后主抽牌三张以
 | AwaitingCardDecision | 多牌替换有必要放置选择 | AwaitingPlacement |
 | AwaitingCardDecision | 多牌替换无需放置选择的特殊分支 | Completed |
 | AwaitingCardDecision | 抽牌堆取得能力牌，弃牌并选择使用能力 | AwaitingAbilityTarget |
-| AwaitingAbilityTarget | 目标尚未正式确认，主动/超时放弃能力 | Completed |
-| AwaitingAbilityTarget | Peek/Spy 合法目标正式确认、临时查看开放 | AwaitingRevealConfirmation |
+| AwaitingAbilityTarget | 目标尚未正式确认，主动 End 或能力原 15 秒 / Turn 90 秒超时放弃 Peek/Spy；Swap 只受 Turn 截止 | Completed |
+| AwaitingAbilityTarget | Peek/Spy 在本次原 15 秒窗口内合法确认唯一目标，开放该窗口剩余临时查看许可 | AwaitingRevealConfirmation |
+| AwaitingAbilityTarget | Peek/Spy 原前置弃牌经合法独立 Undo（目标未确认、原窗口未过、每 Turn 首次） | AwaitingCardDecision（恢复同一主抽牌） |
 | AwaitingAbilityTarget | Swap 完整合法目标确认且交换已生效 | Completed |
 | AwaitingRevealConfirmation | 主动结束或有效截止时间到期 | Completed |
 | AwaitingPlacement | 当前放置完成但尚有下一项 | AwaitingPlacement |
@@ -228,7 +229,7 @@ Turn 不自行创建下一 Turn、决定 Round End 或结算 Game 得分。断�
 - Swap：目标为自己的一张及另一玩家的一张，公开或背面牌都合法；交换时各具体 Card 的正反面状态保持。
 - 仅从 DrawPile 抽到 7–12 且弃掉，才可选择执行对应能力；所有能力可自愿放弃。
 - 未确认合法目标时可放弃，超时则放弃；无 Peek/Spy 合法目标时不得强行开放查看。
-- Peek/Spy 目标确认后进入 AwaitingRevealConfirmation，**不得重选**。关闭查看只结束本次查看授权，不能撤销已生效技能。
+- Peek/Spy **弃置能力牌并正式选择使用**时开启该次 15 秒能力窗口；目标必须在原窗口与原 Turn 截止以内确认，确认后进入 AwaitingRevealConfirmation，**不得重选**。可在目标确认前依 CM-43～CM-46 独立撤销前置弃牌一次（每 Turn 最多成功一次），恢复同一张原主抽牌的完整决策；原公开弃牌与补偿事件各自保留。关闭查看只结束本次查看授权，不能撤销已正式确认的目标。再次合法使用能力独立开启新 15 秒窗口，但不重置 Turn。
 - Swap 完整合法目标确认且交换生效后直接 Completed，无秘密查看状态，重复请求不能重复交换。
 
 ### 5.6 时限与超时兜底
@@ -243,7 +244,8 @@ Turn 不自行创建下一 Turn、决定 Round End 或结算 Game 得分。断�
 | AwaitingPlacement，成功，未选新牌保留位置 | 选已选旧牌中最靠左的位置 |
 | AwaitingPlacement，普通失败，未定新牌方向 | 默认当前牌列左端 |
 | AwaitingPlacement，普通失败，未定惩罚牌方向 | 默认当前牌列左端；不改已经确认的新牌方向 |
-| AwaitingAbilityTarget，目标未确认 | 放弃未执行能力 |
+| AwaitingAbilityTarget，Peek/Spy 目标未确认 | 到能力原 15 秒或 Turn 90 秒截止，放弃目标并完成 Turn |
+| AwaitingAbilityTarget，Swap 目标未完成 | 到 Turn 90 秒截止，放弃未执行的交换 |
 | AwaitingRevealConfirmation | 自动关闭秘密查看、撤销授权并完成 |
 
 已冻结 Replace 不得因超时改成弃牌；已执行 Swap 不得再执行。所有兜底依当前阶段合法性处理。超时造成的 Completed 仍由 Round 正常调度，不设 TimedOut 独立终局。
@@ -263,7 +265,7 @@ Turn 不自行创建下一 Turn、决定 Round End 或结算 Game 得分。断�
 Temporary Reveal 是特定步骤授予特定查看者、特定 Card 的限时权限，不要求单独建独立状态机或永久 PlayerKnowledge。
 
 - InitialReveal：每人每轮最多看两张不同初始牌，总时长 45 秒，可提前结束放弃剩余机会；尚有未查看机会时需要防误触二次确认。
-- Peek/Spy：目标确认并授权开放后最多 **15 秒**，实际结束时间不晚于本 Turn 90 秒截止时间；可主动提前关闭。
+- Peek/Spy：弃置牌并正式选择使用能力时起算最多 **15 秒**，目标确认只使用剩余时长；实际截止不晚于本 Turn 原 90 秒截止。可在未选目标时主动 End，或确认目标后提前关闭。
 - Peek/Spy 目标已确认但结果尚未展示，提前结束前需要二次确认；已看到结果时可直接关闭。
 - 点击关闭但尚在二次确认时，查看仍受原有时限约束；取消提示继续原步骤；提示**不暂停**倒计时。
 - 查看步骤终结、有效截止到期、Turn/Round/Game 有效终结或强制中止时，权限失效；重连仅能恢复仍有效的同一次查看，不允许刷新或改选目标。
@@ -326,3 +328,12 @@ Temporary Reveal 是特定步骤授予特定查看者、特定 Card 的限时权
 ## 10. Phase 3 入口
 
 后续以 docs/game-rules.md、docs/domain-model.md 和本文为共同依据，讨论 **Hidden Information & Player Views**：不同接收者可见的状态、公开与私人事件、临时授权、牌列位置与真实值的区别、重连后的视图重建。再逐步形成 Command / Event Contract。
+
+
+## 11. Phase 4 已批准的业务修订（2026-11-05）
+
+- **正式接受与效果提交分离**：Accepted 的决策可待后续方向完成；正式 Replace 一次性原子生效，不向公众发布中间成功/失败事实。已完成 Replace 不因连接接管撤销；已确认 Peek/Spy 目标不得 Undo。
+- **Peek/Spy Undo 的竞合**：目标确认、主动 End、合法 Undo、能力/Turn 截止和 Game Aborted 依服务器正式顺序只产生一个相容结果。合法 Undo 在 AwaitingAbilityTarget→AwaitingCardDecision 恢复同一主抽牌，且不刷新原 Turn；原弃牌 Accepted 不变。
+- **Settling 及管理资格**：Round 正式 Settling 后禁止首次 Accepted 新普通 Turn Action；已在相应有效边界前取得资格的 Host Kick/Disband，先应用完成 Round 的成绩与 Game End，Game 仍 Playing 时再按权威顺序动态复核 Host/目标条件。Game 已 Completed 不能 Aborted。
+- **Start 与连接**：当前有效 Host 可以在符合 Ready 的其他成员暂时 Disconnected 时合法 Start；单 Player 仅一个有效连接，接管不自动补偿原领域效果。
+- 上述条款及明确的 Command/Result/Event/Player View 边界以 [`phase4-consolidated-contract.md`](phase4-consolidated-contract.md) 为统一补充；本文件原冻结与原子提交规则继续有效。
