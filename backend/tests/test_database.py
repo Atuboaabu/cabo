@@ -1,5 +1,6 @@
-from sqlmodel import create_engine, Session
 from sqlalchemy import text
+from sqlalchemy.engine import create_engine
+from sqlalchemy.orm import Session
 
 from app.config import settings
 
