@@ -1,0 +1,10 @@
+import { cpSync, mkdirSync, rmSync, copyFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const out = resolve(root, 'dist');
+rmSync(out, { recursive: true, force: true });
+mkdirSync(out, { recursive: true });
+copyFileSync(resolve(root, 'index.html'), resolve(out, 'index.html'));
+cpSync(resolve(root, 'src'), resolve(out, 'src'), { recursive: true });
+console.log(`CABO static build written to ${out}`);
