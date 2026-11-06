@@ -123,12 +123,26 @@ export class MockGateway {
     return clone(result);
   }
   dispatch(cmd, p) {
-    if (cmd === 'register' || cmd === 'login') {
-      if (!isEmail(p.email || '') || !p.password) return fail('请输入有效邮箱和密码');
-      // Mock intentionally does not store passwords or model real account credential security.
-      this.account = { id: 'demo-account', name: '你', email: p.email.trim().toLowerCase(), verified: false };
+    if (cmd === 'requestRegistrationCode') {
+      if (!isEmail(p.email || '')) return fail('请输入有效的邮箱地址', 'INVALID_INPUT');
+      // No mail service is connected. A successful-looking fake send is forbidden.
+      return fail('Mock 不发送真实验证码。邮件发送与限流需要 FastAPI 支持。', 'MOCK_LIMIT');
+    }
+    if (cmd === 'register') {
+      if (!isEmail(p.email || '') || !p.password || !/^[0-9]+$/.test(p.code || '')) {
+        return fail('注册需提供有效邮箱、密码和数字验证码', 'INVALID_INPUT');
+      }
+      // Do not invent a valid verification code or create an unverified account.
+      return fail('需要 FastAPI 验证注册验证码后原子创建 Verified 账号；Mock 不执行注册。', 'MOCK_LIMIT');
+    }
+    if (cmd === 'login') {
+      return fail('Mock 无法验证正式账号的邮箱与密码，请使用独立的演示入口。', 'MOCK_LIMIT');
+    }
+    if (cmd === 'enterDemo') {
+      // An isolated, explicitly marked fixture. Not an authenticated registration.
+      this.account = { id: 'demo-account', name: '演示玩家', email: 'demo@example.invalid', verified: true };
       this.session = true; this.takeover = false; this.connection = true;
-      return ok(cmd === 'register' ? '演示账号已创建（未验证邮箱可参与游戏）' : '已进入演示会话');
+      return ok('已进入本地演示身份。未进行注册、邮箱验证或真实认证。');
     }
     if (cmd === 'requestRecovery' || cmd === 'requestVerification') return ok('如符合条件，将发送相应邮件；演示模式不会发送真实邮件');
     if (cmd === 'resetPassword' || cmd === 'verifyEmail' || cmd === 'confirmEmail') return fail('此流程需要真实服务器验证一次性凭据；Mock 不授予该权限', 'MOCK_LIMIT');
