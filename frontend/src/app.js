@@ -12,9 +12,20 @@ function shell(inner,cls=''){
  return '<div class="app-shell"><header class="topbar"><div class="brand"><span class="brand-icon">♤</span>cabo'+(room?'<span class="room-chip">房间 '+esc(room.id)+'</span>':'')+'</div><div class="top-actions"><span class="mock-tag">◈ MOCK · 受限演示</span>'+(account?btn('当前房间','lobby','small quiet')+btn('设置','settings','small quiet')+btn('退出','logout','small quiet'):'')+'<span class="connection '+esc(view.connection)+'">● '+({connected:'已连接',disconnected:'已断线','taken-over':'连接已被接管'}[view.connection]||'未连接')+'</span></div></header>'+(notice?'<div class="notice" role="status">'+esc(notice)+btn('×','dismiss','close')+'</div>':'')+'<main class="main '+cls+'">'+inner+'</main>'+(account?'<aside class="qa-strip" aria-label="Mock 场景"><strong>演示场景</strong>'+['disconnect','reconnect','takeover','reclaim','expireSession'].map((a,i)=>btn(['断线','重连','新设备接管','重新接管','会话过期'][i],a,'small outline')).join('')+'</aside>':'')+'<footer class="footer">一张圆桌，一起 CABO。<span>前端契约演示 · 非真实多人服务</span></footer>'+(modal?'<div class="veil"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><h2 id="modal-title">'+esc(modal.title)+'</h2><p>'+esc(modal.message)+'</p><div class="button-row">'+btn('取消','cancelModal')+btn('确认','confirmModal',modal.danger?'danger':'primary')+'</div></section></div>':'')+'</div>';
 }
 function authentication(){
- const config={login:['入座，开始这一局','和朋友一起，玩一场记忆小游戏。','登录'],register:['加入 CABO 圆桌','创建账号，邀请朋友开始游戏。','注册账号'],forgot:['找回账号访问','仅已验证邮箱可用于邮箱恢复。','发送恢复邮件'],verify:['验证邮箱','未验证邮箱也可以参与游戏。','发送验证邮件'],reset:['重置密码','需要真实服务端验证一次性恢复凭据。','提交重置']};
+ const config={
+  login:['入座，开始这一局','正式登录需由 FastAPI 校验账号与密码。','登录'],
+  register:['加入 CABO 圆桌','注册前必须证明邮箱控制权；仅收到邮件不等于通过验证。','验证并注册'],
+  forgot:['找回账号访问','仅已验证邮箱可用于邮箱恢复。','发送恢复邮件'],
+  verify:['验证邮箱','现有账号邮箱验证需独立认证；新注册请走验证码注册。','发送验证邮件'],
+  reset:['重置密码','需要真实服务端验证一次性恢复凭据。','提交重置']
+ };
  const [heading,subtitle,submit]=config[authMode];
- return shell('<section class="auth-stage"><div class="felt-table" aria-hidden="true"><div class="table-line"></div><div class="ornamental-deck">♠<small>CABO</small></div></div><div class="auth-panel"><div class="ornament">♧　♤　♧</div><h1 class="auth-logo">cabo</h1><div class="rule"></div><h2>'+heading+'</h2><p class="subtitle">'+subtitle+'</p><form id="auth-form">'+(authMode==='reset'?'<label>恢复凭据<input name="token" required autocomplete="off"></label>':'<label>邮箱<input type="email" name="email" required autocomplete="email" placeholder="输入邮箱地址"></label>')+(['login','register','reset'].includes(authMode)?'<label>密码<input type="password" name="password" required autocomplete="'+(authMode==='login'?'current-password':'new-password')+'" placeholder="输入密码"></label>':'')+'<button class="primary full" type="submit" '+(busy?'disabled':'')+'>'+submit+'</button></form><div class="auth-bottom">'+['login','register','forgot','verify','reset'].map((v,i)=>'<a href="#'+v+'" data-auth="'+v+'">'+['登录','注册账号','忘记密码？','邮箱验证','重置密码'][i]+'</a>').join(' · ')+'</div></div></section>','auth-main');
+ const registration=authMode==='register';
+ const email=authMode!=='reset'?'<label>邮箱<input type="email" name="email" required autocomplete="email" placeholder="输入可接收邮件的邮箱地址"></label>':'';
+ const password=['login','register','reset'].includes(authMode)?'<label>密码<input type="password" name="password" required autocomplete="'+(authMode==='login'?'current-password':'new-password')+'" placeholder="输入密码"></label>':'';
+ const code=registration?'<div class="registration-verification"><label for="registration-code">邮箱数字验证码</label><div class="code-row"><input id="registration-code" name="code" inputmode="numeric" pattern="[0-9]+" autocomplete="one-time-code" required placeholder="输入邮件中的数字验证码" aria-describedby="registration-code-status"><button type="button" class="outline" data-action="requestRegistrationCode">发送验证码</button></div><p class="hint" id="registration-code-status" role="status" aria-live="polite">邮件发送和验证码校验由 FastAPI 提供；当前 Mock 无法真正发送邮件或注册账号。</p></div>':'';
+ const loginDemo=authMode==='login'?'<div class="demo-entry"><p class="hint">仅体验界面？演示身份与真实账号完全分离。</p>'+btn('进入本地 Mock 演示','enterDemo','outline full')+'</div>':'';
+ return shell('<section class="auth-stage"><div class="felt-table" aria-hidden="true"><div class="table-line"></div><div class="ornamental-deck">♠<small>CABO</small></div></div><div class="auth-panel"><div class="ornament">♧　♤　♧</div><h1 class="auth-logo">cabo</h1><div class="rule"></div><h2>'+heading+'</h2><p class="subtitle">'+subtitle+'</p><form id="auth-form">'+(authMode==='reset'?'<label>恢复凭据<input name="token" required autocomplete="off"></label>':email)+password+code+'<button class="primary full" type="submit" '+(busy?'disabled':'')+'>'+submit+'</button></form>'+loginDemo+'<div class="auth-bottom">'+['login','register','forgot','verify','reset'].map((v,i)=>'<a href="#'+v+'" data-auth="'+v+'">'+['登录','注册账号','忘记密码？','邮箱验证','重置密码'][i]+'</a>').join(' · ')+'</div></div></section>','auth-main');
 }
 function dashboard(){
  if(!view.room)return shell('<section class="dashboard"><div class="intro"><span class="eyebrow">THE CABO CLUB</span><h1>今晚，围坐一桌。</h1><p>创建圆桌或输入房间编号。每个账号同时最多属于一个 Room。</p></div><div class="lobby-grid"><article class="paper-card"><div class="card-symbol">♤</div><h2>创建房间</h2><p>成为 Host，邀请最多三位朋友。</p>'+btn('创建新房间','createRoom','primary full')+'</article><article class="paper-card"><div class="card-symbol">♧</div><h2>加入房间</h2><p>输入朋友提供的编号。</p><form id="join-form"><label>房间编号<input name="code" required placeholder="例如 042"></label><button type="submit" class="primary full">加入房间</button></form></article></div><p class="hint center">仅本地演示，不代表真实多人连接。</p></section>','dashboard-main');
@@ -64,7 +75,7 @@ async function send(command,payload={}){
   const result=await gateway.send(command,payload,'ui-'+(++request));
   notice=(result.status==='Accepted'?'✓ ':'✕ ')+result.message+(result.code?' · '+result.code:'');
   if(result.status==='Accepted'){
-   if(['register','login'].includes(command))screen='lobby';
+   if(['enterDemo','login'].includes(command))screen='lobby';
    if(['start','reclaim','completeDemoGame'].includes(command))screen='game';
    if(['createRoom','joinRoom','leave','disband','clearClosed'].includes(command))screen='lobby';
    if(['logout','expireSession'].includes(command))screen='auth';
@@ -79,6 +90,19 @@ root.addEventListener('click',e=>{
  const el=e.target.closest('[data-action]');if(!el||el.disabled)return;
  const a=el.dataset.action;
  if(a==='noop')return;
+ if(a==='requestRegistrationCode'){
+  const form=root.querySelector('#auth-form'),email=form?.elements.namedItem('email')?.value||'';
+  const status=root.querySelector('#registration-code-status');
+  const button=el;
+  button.disabled=true;
+  if(status)status.textContent='正在请求发送，请勿重复提交……';
+  gateway.send('requestRegistrationCode',{email},'registration-send-'+(++request)).then(result=>{
+   if(status)status.textContent=(result.status==='Accepted'?'已受理发送请求。':'无法发送：')+result.message;
+  }).catch(()=>{
+   if(status)status.textContent='请求结果未知，请在同步服务端状态后再试。';
+  }).finally(()=>{button.disabled=false;});
+  return;
+ }
  if(a==='dismiss'){notice='';render();return;}
  if(a==='cancelModal'){modal=null;render();return;}
  if(a==='confirmModal'){const m=modal;modal=null;send(m.command,m.payload);return;}
@@ -97,7 +121,7 @@ root.addEventListener('click',e=>{
 root.addEventListener('submit',e=>{
  e.preventDefault();
  const f=e.target,p=Object.fromEntries(new FormData(f));
- if(f.id==='auth-form')send(({forgot:'requestRecovery',verify:'requestVerification',reset:'resetPassword'})[authMode]||authMode,p);
+ if(f.id==='auth-form')send(({forgot:'requestRecovery',verify:'requestVerification',reset:'resetPassword'})[authMode]||authMode,authMode==='register'?{email:p.email,password:p.password,code:p.code}:p);
  if(f.id==='join-form')send('joinRoom',p);
  if(f.id==='name-form')send('changeName',p);
 });
