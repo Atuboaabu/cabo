@@ -114,6 +114,9 @@ export class MockGateway {
     this.sequence++;
   }
   async send(command, payload = {}, requestId = '') {
+    // Never retain passwords or verification / recovery codes in the mock
+    // idempotency cache. Credential-command idempotency belongs to the backend.
+    if (['login','register','resetPassword','verifyEmail','confirmEmail'].includes(command)) requestId = '';
     if (requestId && this.processed.has(requestId)) {
       const prior = this.processed.get(requestId);
       return JSON.stringify(prior.command) === JSON.stringify({command,payload}) ? clone(prior.result) : fail('同一请求身份不能用于不同操作', 'CONFLICT');
