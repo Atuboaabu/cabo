@@ -37,3 +37,7 @@ Until the owner implements the real email and registration adapter, both `reques
 - Login shows only **注册账号** and **忘记密码？** navigation links; other authentication forms return to login.
 - Registration collects a required **游戏昵称** alongside email, password and numeric email code. The temporary frontend adapter payload calls it `nickname`; this is **not a ratified FastAPI field name**.
 - A nickname is a non-unique display label, not an Account ID, Room Member ID or authorization credential. Server-side normalization and validation remain backend responsibilities. Registration remains unavailable in Mock mode until real email proof and atomic Verified-account creation exist.
+
+## Password confirmation (registration only)
+
+Registration includes a required `确认密码` input. The frontend compares it with the password and blocks registration submission on a mismatch, showing native form validation feedback. It clears the validation error when either password field changes. The confirmation is **not** included in the adapter request, nor retained by Mock. Server-side password policy, account creation and verification of the registration email code remain solely backend responsibilities.
