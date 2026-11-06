@@ -132,8 +132,8 @@ export class MockGateway {
       return fail('Mock 不发送真实验证码。邮件发送与限流需要 FastAPI 支持。', 'MOCK_LIMIT');
     }
     if (cmd === 'register') {
-      if (!isEmail(p.email || '') || !p.password || !/^[0-9]+$/.test(p.code || '')) {
-        return fail('注册需提供有效邮箱、密码和数字验证码', 'INVALID_INPUT');
+      if (!isEmail(p.email || '') || !p.nickname?.trim() || !p.password || !/^[0-9]+$/.test(p.code || '')) {
+        return fail('注册需提供有效邮箱、游戏昵称、密码和数字验证码', 'INVALID_INPUT');
       }
       // Do not invent a valid verification code or create an unverified account.
       return fail('需要 FastAPI 验证注册验证码后原子创建 Verified 账号；Mock 不执行注册。', 'MOCK_LIMIT');
