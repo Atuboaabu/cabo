@@ -24,7 +24,7 @@ function authentication(){
  const registration=authMode==='register';
  const email=authMode!=='reset'?'<label>邮箱<input type="email" name="email" required autocomplete="email" placeholder="输入可接收邮件的邮箱地址"></label>':'';
  const password=['login','register','reset'].includes(authMode)?'<label>密码<input type="password" name="password" required autocomplete="'+(authMode==='login'?'current-password':'new-password')+'" placeholder="输入密码"></label>':'';
- const confirmation=registration?'<label>确认密码<input type="password" name="confirmPassword" required autocomplete="new-password" placeholder="再次输入密码" aria-describedby="password-confirmation-hint"></label>':'';
+ const confirmation=registration?'<label>确认密码<input type="password" name="confirmPassword" required autocomplete="new-password" placeholder="再次输入密码"></label>':'';
  const code=registration?'<div class="registration-verification"><label for="registration-code">验证码</label><div class="code-row"><input id="registration-code" name="code" inputmode="numeric" pattern="[0-9]+" autocomplete="one-time-code" required placeholder="输入验证码" aria-describedby="registration-code-status"><button type="button" class="outline" data-action="requestRegistrationCode">发送验证码</button></div><p class="hint" id="registration-code-status" role="status" aria-live="polite"></p></div>':'';
  const nickname=registration?'<label>游戏昵称<input type="text" name="nickname" required autocomplete="nickname" placeholder="设置在游戏中显示的昵称"></label>':'';
  const authLinks=authMode==='login'
