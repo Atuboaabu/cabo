@@ -69,8 +69,10 @@ test('unknown semantic version stops work; event cannot replace View',()=>{asser
 test('registration requires numeric code and cannot create account in Mock', async()=>{
  const mock=new MockGateway();
  assert.equal((await mock.send('register',{email:'person@example.com',password:'secret'})).code,'INVALID_INPUT');
- assert.equal((await mock.send('register',{email:'person@example.com',password:'secret',code:'not-numeric'})).code,'INVALID_INPUT');
- assert.equal((await mock.send('register',{email:'person@example.com',password:'secret',code:'123456'})).code,'MOCK_LIMIT');
+ assert.equal((await mock.send('register',{email:'person@example.com',nickname:'小竹',password:'secret',code:'not-numeric'})).code,'INVALID_INPUT');
+ assert.equal((await mock.send('register',{email:'person@example.com',password:'secret',code:'123456'})).code,'INVALID_INPUT');
+ assert.equal((await mock.send('register',{email:'person@example.com',nickname:'   ',password:'secret',code:'123456'})).code,'INVALID_INPUT');
+ assert.equal((await mock.send('register',{email:'person@example.com',nickname:'小竹',password:'secret',code:'123456'})).code,'MOCK_LIMIT');
  assert.equal(mock.snapshot().account,null);
  assert.equal(mock.snapshot().session,'expired');
  assert.equal((await mock.send('createRoom')).code,'SESSION_EXPIRED');
@@ -91,4 +93,27 @@ test('login is not a bypass for pending email verification',async()=>{
  assert.equal((await mock.send('enterDemo')).status,'Accepted');
  assert.equal(mock.snapshot().account.email,'demo@example.invalid');
  assert.equal(mock.snapshot().account.verified,true);
+});
+
+test('login UI offers registration and recovery only; other auth screens return to login',async()=>{
+ const {readFileSync}=await import('node:fs');
+ const app=readFileSync(new URL('../src/app.js',import.meta.url),'utf8');
+ assert.match(app,/\[\['register','注册账号'\],\['forgot','忘记密码？'\]\]/);
+ assert.match(app,/\[\['login','返回登录'\]\]/);
+ assert.match(app,/name="nickname" required/);
+ assert.match(app,/nickname:p.nickname/);
+});
+
+test('registration password confirmation must match and never gets sent as credentials', async()=>{
+ const { passwordsMatch } = await import('../src/registration.js');
+ assert.equal(passwordsMatch('password123','password123'),true);
+ assert.equal(passwordsMatch('password123','password321'),false);
+ assert.equal(passwordsMatch('password123',''),false);
+ assert.equal(passwordsMatch('',''),false);
+ const { readFileSync } = await import('node:fs');
+ const app=readFileSync(new URL('../src/app.js',import.meta.url),'utf8');
+ assert.match(app,/name="confirmPassword" required/);
+ assert.match(app,/!passwordsMatch\(p\.password,p\.confirmPassword\)/);
+ assert.match(app,/setCustomValidity\('两次输入的密码不一致'\)/);
+ assert.match(app,/\{email:p\.email,nickname:p\.nickname,password:p\.password,code:p\.code\}/);
 });
