@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { MockGateway } from '../src/mock.js';
 import { formatRemaining, assertCompatible, evaluateEvent } from '../src/adapter.js';
-const setup = async () => { let now = 100000; const mock = new MockGateway(()=>now); await mock.send('register',{email:'me@example.com',password:'abc'}); return {mock,advance:(n)=>{now+=n;},now:()=>now}; };
+const setup = async () => { let now = 100000; const mock = new MockGateway(()=>now); await mock.send('enterDemo'); return {mock,advance:(n)=>{now+=n;},now:()=>now}; };
 test('one account cannot create or join second Room and cannot duplicate seat', async()=>{
   const {mock}=await setup(); assert.equal((await mock.send('createRoom')).status,'Accepted');
   assert.equal((await mock.send('joinRoom',{code:'other'})).code,'ROOM_CONFLICT');
@@ -65,3 +65,30 @@ test('duplicate request identity returns same result without applying twice',asy
 });
 test('deadline formatting reads absolute server timestamp',()=>{assert.equal(formatRemaining(190000,100000),'01:30');assert.equal(formatRemaining(100000,190000),'00:00');});
 test('unknown semantic version stops work; event cannot replace View',()=>{assert.throws(()=>assertCompatible({semanticVersion:2}));assert.equal(evaluateEvent({semanticVersion:1,sequence:9},1),'resync');});
+
+test('registration requires numeric code and cannot create account in Mock', async()=>{
+ const mock=new MockGateway();
+ assert.equal((await mock.send('register',{email:'person@example.com',password:'secret'})).code,'INVALID_INPUT');
+ assert.equal((await mock.send('register',{email:'person@example.com',password:'secret',code:'not-numeric'})).code,'INVALID_INPUT');
+ assert.equal((await mock.send('register',{email:'person@example.com',password:'secret',code:'123456'})).code,'MOCK_LIMIT');
+ assert.equal(mock.snapshot().account,null);
+ assert.equal(mock.snapshot().session,'expired');
+ assert.equal((await mock.send('createRoom')).code,'SESSION_EXPIRED');
+});
+test('request code never claims mail sent or produces credentials', async()=>{
+ const mock=new MockGateway();
+ assert.equal((await mock.send('requestRegistrationCode',{email:'bad'})).code,'INVALID_INPUT');
+ const result=await mock.send('requestRegistrationCode',{email:'person@example.com'});
+ assert.equal(result.status,'Rejected');
+ assert.equal(result.code,'MOCK_LIMIT');
+ assert.equal(mock.snapshot().account,null);
+ assert.equal(mock.snapshot().room,null);
+});
+test('login is not a bypass for pending email verification',async()=>{
+ const mock=new MockGateway();
+ assert.equal((await mock.send('login',{email:'person@example.com',password:'secret'})).code,'MOCK_LIMIT');
+ assert.equal(mock.snapshot().session,'expired');
+ assert.equal((await mock.send('enterDemo')).status,'Accepted');
+ assert.equal(mock.snapshot().account.email,'demo@example.invalid');
+ assert.equal(mock.snapshot().account.verified,true);
+});
