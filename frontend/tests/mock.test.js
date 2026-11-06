@@ -117,3 +117,14 @@ test('registration password confirmation must match and never gets sent as crede
  assert.match(app,/setCustomValidity\('两次输入的密码不一致'\)/);
  assert.match(app,/\{email:p\.email,nickname:p\.nickname,password:p\.password,code:p\.code\}/);
 });
+
+test('registration shows concise verification label without repeated demo guidance', async()=>{
+ const { readFileSync } = await import('node:fs');
+ const app=readFileSync(new URL('../src/app.js',import.meta.url),'utf8');
+ assert.match(app,/<label for="registration-code">验证码<\/label>/);
+ assert.doesNotMatch(app,/<label for="registration-code">邮箱数字验证码<\/label>/);
+ assert.doesNotMatch(app,/当前 Mock 无法真正发送邮件或注册账号/);
+ assert.match(app,/data-action="requestRegistrationCode"/);
+ assert.match(app,/进入本地 Mock 演示/);
+ assert.match(app,/MOCK · 受限演示/);
+});
