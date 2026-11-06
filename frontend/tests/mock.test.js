@@ -103,3 +103,17 @@ test('login UI offers registration and recovery only; other auth screens return 
  assert.match(app,/name="nickname" required/);
  assert.match(app,/nickname:p.nickname/);
 });
+
+test('registration password confirmation must match and never gets sent as credentials', async()=>{
+ const { passwordsMatch } = await import('../src/registration.js');
+ assert.equal(passwordsMatch('password123','password123'),true);
+ assert.equal(passwordsMatch('password123','password321'),false);
+ assert.equal(passwordsMatch('password123',''),false);
+ assert.equal(passwordsMatch('',''),false);
+ const { readFileSync } = await import('node:fs');
+ const app=readFileSync(new URL('../src/app.js',import.meta.url),'utf8');
+ assert.match(app,/name="confirmPassword" required/);
+ assert.match(app,/!passwordsMatch\(p\.password,p\.confirmPassword\)/);
+ assert.match(app,/setCustomValidity\('两次输入的密码不一致'\)/);
+ assert.match(app,/\{email:p\.email,nickname:p\.nickname,password:p\.password,code:p\.code\}/);
+});
