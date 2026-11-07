@@ -21,6 +21,10 @@ const clone = (v) => structuredClone(v);
 const fail = (message, code = 'REJECTED') => ({ status: 'Rejected', code, message });
 const ok = (message = '操作已确认') => ({ status: 'Accepted', message });
 const isEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+const demoOccupiedNames = new Set(membersSeed.filter(m => m.id !== 'demo-me').map(m => m.name));
+// Fixture comparison only. It is NOT the backend's canonical-name algorithm,
+// a global lookup, a reservation, or a PostgreSQL uniqueness constraint.
+const isDemoNameCollision = (name) => demoOccupiedNames.has(name.trim());
 
 export class MockGateway {
   constructor(clock = () => Date.now()) {
@@ -44,12 +48,18 @@ export class MockGateway {
       account: this.session && this.account ? { id: this.account.id, name: this.account.name, email: this.account.email, verified: this.account.verified } : null,
       session: this.session ? 'valid' : 'expired',
       connection: this.connection ? (this.takeover ? 'taken-over' : 'connected') : 'disconnected',
-      room: this.session && this.room ? clone(this.room) : null,
+      room: this.session && this.room ? {
+        ...clone(this.room),
+        members: this.room.members.map(member => this.projectMember(member))
+      } : null,
       game: this.session && this.game ? this.projectGame() : null,
       privateResult: this.session && this.connection && !this.takeover && this.secret && this.secret.deadline > this.clock() ? clone(this.secret) : null,
       mode: 'MOCK · 受限演示'
     };
     return view;
+  }
+  projectMember(member) {
+    return { ...clone(member), name: member.id === 'demo-me' && this.account ? this.account.name : member.name };
   }
   projectGame() {
     const game = this.game;
@@ -60,7 +70,7 @@ export class MockGateway {
       abilityDeadline: game.abilityDeadline,
       revealCount: game.revealed.size, revealFinished: game.revealFinished,
       maxReveal: 2, discardTop: game.discardTop, drawCount: game.drawCount,
-      players: this.room.members.map((m) => ({ ...m, hand: game.hands[m.id].map(card => card === null ? { faceUp: false } : { faceUp: true, value: card }) })),
+      players: this.room.members.map((m) => ({ ...this.projectMember(m), hand: game.hands[m.id].map(card => card === null ? { faceUp: false } : { faceUp: true, value: card }) })),
       caboCaller: game.caboCaller, finalOrder: [...game.finalOrder],
       drawnValue: game.step === 'card' && game.acting === 'demo-me' ? game.drawn : undefined,
       drawnSource: game.step === 'card' ? game.drawnSource : undefined,
@@ -132,11 +142,15 @@ export class MockGateway {
       return fail('Mock 不发送真实验证码。邮件发送与限流需要 FastAPI 支持。', 'MOCK_LIMIT');
     }
     if (cmd === 'register') {
-      if (!isEmail(p.email || '') || !p.nickname?.trim() || !p.password || !/^[0-9]+$/.test(p.code || '')) {
-        return fail('注册需提供有效邮箱、游戏昵称、密码和数字验证码', 'INVALID_INPUT');
+      if (!isEmail(p.email || '') || typeof p.nickname !== 'string' || !p.nickname.trim() || !p.password || !/^[0-9]+$/.test(p.code || '')) {
+        return fail('注册需提供有效邮箱、注册名、密码和数字验证码', 'INVALID_INPUT');
       }
-      // Do not invent a valid verification code or create an unverified account.
-      return fail('需要 FastAPI 验证注册验证码后原子创建 Verified 账号；Mock 不执行注册。', 'MOCK_LIMIT');
+      if (isDemoNameCollision(p.nickname)) {
+        return fail('该注册名与演示席位名称冲突。仅为示例冲突，并非服务端全局唯一性检查。', 'DEMO_NAME_CONFLICT');
+      }
+      // No local uniqueness acceptance: the backend must check email and
+      // canonical display name atomically when creating a Verified Account.
+      return fail('正式注册必须由服务端同时校验验证码、邮箱及注册名唯一性；Mock 不创建账号。', 'MOCK_LIMIT');
     }
     if (cmd === 'login') {
       return fail('Mock 无法验证正式账号的邮箱与密码，请使用独立的演示入口。', 'MOCK_LIMIT');
@@ -217,7 +231,16 @@ export class MockGateway {
     if (cmd === 'changeName' || cmd === 'changeEmail' || cmd === 'changePassword' || cmd === 'deleteAccount') {
       if (this.room?.state === 'Playing') return fail('正在游戏中，禁止普通账号设置', 'PLAYING_LOCK');
       if (cmd === 'deleteAccount' && this.room && this.room.state !== 'Closed') return fail('必须先合法 Leave 当前 Room，再单独提交注销', 'ROOM_CONFLICT');
-      if (cmd === 'changeName') { if (!p.name?.trim()) return fail('展示名不能为空'); this.account.name = p.name.trim(); this.sequence++; return ok('演示展示名已更新（重名合法）'); }
+      if (cmd === 'changeName') {
+        if (typeof p.name !== 'string' || !p.name.trim()) return fail('注册名不能为空', 'INVALID_INPUT');
+        if (p.name.trim() === this.account.name) return fail('注册名没有变化', 'UNCHANGED');
+        if (isDemoNameCollision(p.name)) {
+          return fail('该名称与演示席位冲突，更名未生效（仅为示例冲突，并非全局查询）。', 'DEMO_NAME_CONFLICT');
+        }
+        // A successful local name change would misrepresent the actual
+        // canonical comparison and concurrent DB uniqueness constraint.
+        return fail('Mock 不能确认名称在全部账号中唯一，更名未生效；请等待服务端校验。', 'MOCK_LIMIT');
+      }
       return fail('敏感账号变更需要真实服务端重新认证和验证；Mock 不执行', 'MOCK_LIMIT');
     }
     if (!this.room || !this.game || this.game.state !== 'Playing') return fail('当前没有可操作的游戏');
