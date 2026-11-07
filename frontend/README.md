@@ -28,7 +28,7 @@ This UI never represents a complete implementation of Phase 4 game rules, author
 
 ## Registration email-code contract (AUTH-5-R1)
 
-Registration now displays email, password, numeric email verification code, a send/resend action and the final register action. The real backend must validate an ephemeral registration verification context (normalized email, purpose, expiry, replacement of previous codes, one-time consumption, abuse controls) and atomically enforce email uniqueness when completing registration; success creates a **Verified** account but does not automatically grant Room identity. The documents intentionally do not specify a fixed number of digits, cooldown duration, endpoint path or error-code schema.
+Registration now displays the required globally unique registration/display name, email, password, numeric email verification code, a send/resend action and the final register action. The real backend must validate an ephemeral registration verification context (normalized email, purpose, expiry, replacement of previous codes, one-time consumption, abuse controls) and atomically enforce email uniqueness when completing registration; success creates a **Verified** account but does not automatically grant Room identity. The documents intentionally do not specify a fixed number of digits, cooldown duration, endpoint path or error-code schema.
 
 Until the owner implements the real email and registration adapter, both `requestRegistrationCode` and `register` reject with a local `MOCK_LIMIT` indication. No email is sent and no Account or Session is created. The independent **进入本地 Mock 演示** button activates an explicitly labeled fixture for other UI scenarios without claiming registration, email ownership or true authentication.
 
