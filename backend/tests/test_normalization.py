@@ -35,10 +35,10 @@ def test_normalize_name_exception(
 @pytest.mark.parametrize(
     "email, expected_result",
     [
-        ("Alice@gmail.com", ("Alice@gmail.com", "Alice@gmail.com")),
+        ("Alice@gmail.com", ("Alice@gmail.com", "alice@gmail.com")),
         ("alice@gmail.com", ("alice@gmail.com", "alice@gmail.com")),
         ("alice+game@gmail.com", ("alice+game@gmail.com", "alice+game@gmail.com")),
-        ("Alice@gmail.COM", ("Alice@gmail.com", "Alice@gmail.com")),
+        ("Alice@gmail.COM", ("Alice@gmail.com", "alice@gmail.com")),
     ]
 )
 def test_normalize_email_success(

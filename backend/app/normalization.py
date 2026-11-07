@@ -17,6 +17,9 @@ def normalize_name(
 
     normalized_name = unicodedata.normalize("NFC", display_name.casefold())
 
+    if not 3 <= len(normalized_name) <= 100:
+        raise InvalidUsernameException(name)
+
     return display_name, normalized_name
 
 def normalize_email(
@@ -39,5 +42,5 @@ def normalize_email(
     local_part = result.local_part
     
     display_email = f"{local_part}@{domain}"
-    normalized_email = display_email
+    normalized_email = display_email.casefold()
     return display_email, normalized_email
