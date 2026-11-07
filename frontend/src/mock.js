@@ -142,7 +142,7 @@ export class MockGateway {
       return fail('Mock 不发送真实验证码。邮件发送与限流需要 FastAPI 支持。', 'MOCK_LIMIT');
     }
     if (cmd === 'register') {
-      if (!isEmail(p.email || '') || !p.nickname?.trim() || !p.password || !/^[0-9]+$/.test(p.code || '')) {
+      if (!isEmail(p.email || '') || typeof p.nickname !== 'string' || !p.nickname.trim() || !p.password || !/^[0-9]+$/.test(p.code || '')) {
         return fail('注册需提供有效邮箱、注册名、密码和数字验证码', 'INVALID_INPUT');
       }
       if (isDemoNameCollision(p.nickname)) {
