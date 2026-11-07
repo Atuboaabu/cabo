@@ -18,6 +18,11 @@ class UserAccount(Base):
     username: Mapped[str] = mapped_column(
         String(100),
         nullable=False,
+    )
+
+    normalized_username: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
         unique=True,
     )
 
