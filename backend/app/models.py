@@ -48,11 +48,11 @@ class UserAccount(Base):
     )
 
 class EmailVerificationCode(Base):
-    __tablename__ = "email_verfication_codes"
+    __tablename__ = "email_verification_codes"
     __table_args__ = (
         CheckConstraint(
             "attempt_count >= 0",
-            "ck_email_verfication_codes_attempt_count_nonnegative"
+            "ck_email_verification_codes_attempt_count_nonnegative"
         ),
     )
 
