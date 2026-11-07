@@ -43,4 +43,8 @@ def normalize_email(
     
     display_email = f"{local_part}@{domain}"
     normalized_email = display_email.casefold()
+
+    if not (len(display_email) <= 100 and len(normalized_email) <= 100):
+        raise InvalidEmailAddressException(email)
+
     return display_email, normalized_email

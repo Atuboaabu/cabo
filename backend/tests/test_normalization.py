@@ -52,6 +52,7 @@ def test_normalize_email_success(
     [
         ("     "),
         ("alice_gmail.com"),
+        ("alice" * 40 + "@gmail.com"),
     ]
 )
 def test_normalize_email_exception(
