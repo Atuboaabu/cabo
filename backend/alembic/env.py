@@ -13,8 +13,15 @@ import app.models
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
+args = context.get_x_argument(as_dictionary=True)
+env = args.get("env", "dev")
 
-config.set_main_option("sqlalchemy.url", settings.database_url)
+if env == "dev":
+    config.set_main_option("sqlalchemy.url", settings.database_url)
+elif env == "test":
+    config.set_main_option("sqlalchemy.url", settings.test_database_url)
+else:
+    raise ValueError(f"Not Supported Database env: {env}")
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.

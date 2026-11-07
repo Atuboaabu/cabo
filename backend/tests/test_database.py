@@ -1,8 +1,12 @@
-from sqlalchemy import text
+from sqlalchemy import text, select, func, delete
 from sqlalchemy.engine import create_engine
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
+import pytest
+import uuid
 
 from app.config import settings
+from app.models import UserAccount
 
 engine = create_engine(
     url = settings.test_database_url,
