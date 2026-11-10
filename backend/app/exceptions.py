@@ -11,3 +11,6 @@ class InvalidEmailAddressException(Exception):
 class VerificationAttemptLimitExceedException(Exception):
     def __init__(self, email: str) -> None:
         self.email = email
+
+class VerificationCodeNotMatchException(Exception):
+    pass

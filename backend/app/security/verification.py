@@ -37,3 +37,21 @@ def hash_verification_code(
         message,
         hashlib.sha256
     ).hexdigest()
+
+def compare_verification_code(
+    *,
+    code: str,
+    stored_digest: str,
+    normalized_email: str,
+    purpose: str
+)->bool:
+    calculated_digest = hash_verification_code(
+        code=code,
+        normalized_email=normalized_email,
+        purpose=purpose
+    )
+
+    return hmac.compare_digest(
+        calculated_digest,
+        stored_digest
+    )

@@ -1,9 +1,11 @@
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert
 from datetime import datetime, timezone, timedelta
 
-from app.security.verification import generate_code, hash_verification_code
+from app.security.verification import generate_code, hash_verification_code, compare_verification_code
 from app.models import EmailVerificationCode
+from app.exceptions import VerificationCodeNotMatchException
 
 def generate_email_verification_code(
     session: Session,
@@ -50,6 +52,41 @@ def generate_email_verification_code(
         raise
 
     return email_verification_code
+
+def verify_email_verification_code(
+    session: Session,
+    code: str,
+    normalized_email: str,
+    purpose: str = "registration"
+)->bool:
+    statement = select(EmailVerificationCode).where(
+        EmailVerificationCode.normalized_email == normalized_email
+    ).with_for_update()
+
+    stored_verification_code = session.execute(
+        statement
+    ).scalar_one_or_none()
+
+    if stored_verification_code is None:
+        return False
+    
+    if stored_verification_code.expires_at <= datetime.now(timezone.utc):
+        stored_verification_code.attempt_count += 1
+        raise VerificationCodeNotMatchException()
+
+    compare_result = compare_verification_code(
+        code=code,
+        stored_digest=stored_verification_code.code_digest,
+        normalized_email=normalized_email,
+        purpose=purpose
+    )
+    if not compare_result:
+        stored_verification_code.attempt_count += 1
+        raise VerificationCodeNotMatchException()
+        
+    stored_verification_code.consumed_at = datetime.now(timezone.utc)
+
+    return True
 
 def send_email_verification_code(
     session: Session,
