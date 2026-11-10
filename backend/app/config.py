@@ -4,6 +4,7 @@ class Setting(BaseSettings):
     database_url: str
     test_database_url: str
     sql_echo: bool = True
+    verification_hmac_key: bytes
 
     model_config = SettingsConfigDict(
         env_file=".env",
