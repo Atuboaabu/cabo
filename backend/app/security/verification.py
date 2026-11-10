@@ -19,7 +19,7 @@ def hash_verification_code(
     code: str,
     normalized_email: str,
     purpose: str
-)->bytes:
+)->str:
     fields = (
         code,
         normalized_email,
@@ -36,4 +36,4 @@ def hash_verification_code(
         settings.verification_hmac_key,
         message,
         hashlib.sha256
-    ).digest()
+    ).hexdigest()
