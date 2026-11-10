@@ -14,3 +14,9 @@ class VerificationAttemptLimitExceedException(Exception):
 
 class VerificationCodeNotMatchException(Exception):
     pass
+
+class UserAccountExistedException(Exception):
+    pass
+
+class UserNameConflictException(Exception):
+    pass

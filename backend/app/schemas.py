@@ -17,6 +17,8 @@ class UserAccountCreate(BaseModel):
         description="用户密码"
     )
 
+    verification_code: str
+
 class UserAccountResponse(BaseModel):
     id: uuid.UUID
     username: str
