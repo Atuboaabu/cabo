@@ -25,7 +25,7 @@ def generate_email_verification_code(
             expires_at=expires_at,
             consumed_at=None,
             attempt_count=0
-        ).on_conflict_do_nothing(
+        ).on_conflict_do_update(
             index_elements = [EmailVerificationCode.normalized_email]
         ).returning(
             EmailVerificationCode.id
@@ -34,6 +34,7 @@ def generate_email_verification_code(
         verify_id = session.execute(
             statement
         ).scalar_one_or_none()
+        session.commit()
 
         if verify_id is None:
             return None
