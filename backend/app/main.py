@@ -1,15 +1,10 @@
-from fastapi import FastAPI, status
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI
+
+from app.exc import exception_handlers
+from app.routers import auth
 
 app = FastAPI()
 
-@app.get(
-    "/health"
-)
-def get_health():
-    return JSONResponse(
-        status_code = status.HTTP_200_OK,
-        content = {
-            "status": "ok"
-        }
-    )
+exception_handlers.register_exception_handlers(app)
+
+app.include_router(auth.router)

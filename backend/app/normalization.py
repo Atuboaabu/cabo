@@ -1,7 +1,7 @@
 import unicodedata
 from email_validator import validate_email, EmailNotValidError
 
-from app.exceptions import InvalidEmailAddressException, InvalidUsernameException
+from app.exc.exceptions import InvalidEmailAddressException, InvalidUsernameException
 
 def normalize_name(
     name: str

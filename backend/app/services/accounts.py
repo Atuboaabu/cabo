@@ -8,9 +8,9 @@ from app.services import verification
 from app.normalization import normalize_email, normalize_name
 from app.security import password
 
-from app.exceptions import (VerificationCodeNotMatchException,
-                            UserAccountExistedException,
-                            UserNameConflictException,)
+from app.exc.exceptions import (VerificationCodeNotMatchException,
+                                UserAccountExistedException,
+                                UserNameConflictException,)
 
 
 def create_useraccount(
@@ -19,14 +19,16 @@ def create_useraccount(
 )->UserAccountResponse:
     code = user_data.verification_code
     display_email, normalized_email = normalize_email(user_data.email)
+    display_name, normalized_username = normalize_name(user_data.username)
     hashed_password = password.hash_password(user_data.password)
     try:
-        if not verification.verify_email_verification_code(
+        verify_result = verification.verify_email_verification_code(
             session,
             code,
             normalized_email,
             "registration"
-        ):
+        )
+        if not verify_result:
             session.commit()
             raise VerificationCodeNotMatchException()
         else:
@@ -37,8 +39,7 @@ def create_useraccount(
             ).scalar_one_or_none()
             if user_account is not None:
                 raise UserAccountExistedException()
-            
-            display_name, normalized_username = normalize_name(user_data.username)
+
             user_account = session.execute(
                 select(UserAccount).where(
                     UserAccount.normalized_username == normalized_username
