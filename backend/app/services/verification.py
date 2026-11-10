@@ -26,7 +26,13 @@ def generate_email_verification_code(
             consumed_at=None,
             attempt_count=0
         ).on_conflict_do_update(
-            index_elements = [EmailVerificationCode.normalized_email]
+            index_elements = [EmailVerificationCode.normalized_email],
+            set_={
+                "code_digest": code_digest,
+                "expires_at": expires_at,
+                "consumed_at": None,
+                "attempt_count": 0
+            }
         ).returning(
             EmailVerificationCode.id
         )
