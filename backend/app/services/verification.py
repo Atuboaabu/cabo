@@ -83,9 +83,11 @@ def verify_email_verification_code(
         purpose=purpose
     )
     if not compare_result:
-        stored_verification_code.attempt_count += 1    
-    else:
-        stored_verification_code.consumed_at = datetime.now(timezone.utc)
+        stored_verification_code.attempt_count += 1
+        session.flush()
+        return False    
+
+    stored_verification_code.consumed_at = datetime.now(timezone.utc)
     session.flush()
 
     return True
