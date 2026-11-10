@@ -7,6 +7,8 @@ from app.security.verification import generate_code, hash_verification_code, com
 from app.models import EmailVerificationCode
 from app.exceptions import VerificationCodeNotMatchException
 
+MAX_ATTEMPTS = 5
+
 def generate_email_verification_code(
     session: Session,
     normalized_email: str,
@@ -70,6 +72,10 @@ def verify_email_verification_code(
     if stored_verification_code is None:
         return False
     
+    if ((stored_verification_code.consumed_at is not None) or
+        (stored_verification_code.attempt_count >= MAX_ATTEMPTS)):
+        raise VerificationCodeNotMatchException()
+    
     if stored_verification_code.expires_at <= datetime.now(timezone.utc):
         stored_verification_code.attempt_count += 1
         raise VerificationCodeNotMatchException()
@@ -80,12 +86,14 @@ def verify_email_verification_code(
         normalized_email=normalized_email,
         purpose=purpose
     )
-    if not compare_result:
+    if ((not compare_result) or
+        (stored_verification_code.expires_at <= datetime.now(timezone.utc))):
         stored_verification_code.attempt_count += 1
+        session.flush()
         raise VerificationCodeNotMatchException()
         
     stored_verification_code.consumed_at = datetime.now(timezone.utc)
-
+    session.flush()
     return True
 
 def send_email_verification_code(
