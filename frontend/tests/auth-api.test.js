@@ -78,3 +78,9 @@ test('registered email reports explicit already-registered message',async()=>{
      error.message==='该邮箱已注册，请直接登录或使用其他邮箱注册。'
  );
 });
+
+test('taken nickname displays the agreed Chinese message',async()=>{
+ const api=createAuthApi({fetchImpl:async()=>response(409,{code:'USERNAME_TAKEN'})});
+ await assert.rejects(api.register({nickname:'Alice',email:'alice@example.com',password:'secret',code:'123456'}),
+  error=>error instanceof AuthApiError && error.status===409 && error.code==='USERNAME_TAKEN' && error.message==='该昵称已被占用，请更换昵称。');
+});
