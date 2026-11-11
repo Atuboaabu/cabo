@@ -185,7 +185,7 @@ test('AUTH-18-R1: UI and README contain no duplicate-name or unverified-play cla
  const app=readFileSync(new URL('../src/app.js',import.meta.url),'utf8');
  const readme=readFileSync(new URL('../README.md',import.meta.url),'utf8');
  const mock=readFileSync(new URL('../src/mock.js',import.meta.url),'utf8');
- assert.match(app,/注册名（游戏展示名）/);
+ assert.match(app,/<label>昵称<input type="text" name="nickname" required/);
  assert.match(app,/新名称必须全局唯一/);
  assert.match(app,/未验证（需完成验证）/);
  assert.doesNotMatch(app,/未验证（仍可参与游戏）/);
@@ -241,4 +241,16 @@ test('registration feedback uses accessible themed success, error and progress s
  assert.match(css,/input\[aria-invalid="true"\]/);
  assert.match(css,/\.notice\.success/);
  assert.match(css,/\.notice\.error/);
+});
+
+test('confirmation mismatch warning is prominent without altering validation',async()=>{
+ const {readFileSync}=await import('node:fs');
+ const app=readFileSync(new URL('../src/app.js',import.meta.url),'utf8');
+ const css=readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
+ assert.match(app,/showFormFeedback\(message,error,error\?'error':'info'\)/);
+ assert.match(app,/confirmation\.setCustomValidity\(error\)/);
+ assert.match(css,/\.password-confirmation-status\[data-tone="error"\]/);
+ assert.match(css,/\.password-confirmation-status\[data-tone="error"\]::before/);
+ assert.doesNotMatch(app,/注册名（游戏展示名）/);
+ assert.match(app,/设置昵称（不可重复）/);
 });
