@@ -1,8 +1,9 @@
 from fastapi import APIRouter
 
 from app.depencicies.session import SessionDep
-from app.schemas import UserAccountCreate
-from app.services import accounts
+from app.schemas import UserAccountCreate, UserAccountResponse, VerificationCodeRequest
+from app.services import accounts, verification
+from app.normalization import normalize_email
 
 router = APIRouter(
     prefix="/auth",
@@ -14,13 +15,27 @@ router = APIRouter(
 )
 def get_verification_code(
     session: SessionDep,
-    email: str,
-    purpose: str
+    code_request: VerificationCodeRequest
 ):
-    pass
+    display_email, normalized_email = normalize_email(code_request.email_address)
+
+    verify_code = verification.generate_email_verification_code(
+        session,
+        normalized_email,
+        code_request.purpose
+    )
+
+    assert verify_code is not None
+
+    verification.send_email_verification_code(
+        session,
+        display_email,
+        verify_code
+    )
 
 @router.post(
-    "/register"
+    "/register",
+    response_model=UserAccountResponse
 )
 def register_useraccount(
     session: SessionDep,

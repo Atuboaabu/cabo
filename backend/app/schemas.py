@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime
 from pydantic import BaseModel, Field, EmailStr
+from typing import Literal
 
 class UserAccountCreate(BaseModel):
     username: str = Field(
@@ -24,3 +25,7 @@ class UserAccountResponse(BaseModel):
     username: str
     email: str
     created_at: datetime
+
+class VerificationCodeRequest(BaseModel):
+    email_address: EmailStr
+    purpose: Literal["registration", "change_info", "log_out"]

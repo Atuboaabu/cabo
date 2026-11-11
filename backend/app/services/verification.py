@@ -98,4 +98,5 @@ def send_email_verification_code(
     verification_code: str
 ):
     # TODO: send_email_verify_code(email_address, verification_code)
+    print(f"Send verification code {verification_code} to {email_address}")
     pass
