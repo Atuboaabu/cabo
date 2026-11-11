@@ -4,6 +4,7 @@ from app.depencicies.session import SessionDep
 from app.schemas import UserAccountCreate, UserAccountResponse, VerificationCodeRequest
 from app.services import accounts, verification
 from app.normalization import normalize_email
+from app.integrations import email_sender
 
 router = APIRouter(
     prefix="/auth",
@@ -27,11 +28,11 @@ def get_verification_code(
 
     assert verify_code is not None
 
-    verification.send_email_verification_code(
-        session,
+    result = email_sender.send_verification_email(
         display_email,
         verify_code
     )
+    print(f"get_verification_code result = {result}")
 
 @router.post(
     "/register",

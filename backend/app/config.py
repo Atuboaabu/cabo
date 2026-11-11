@@ -5,6 +5,8 @@ class Setting(BaseSettings):
     test_database_url: str
     sql_echo: bool = True
     verification_hmac_key: bytes
+    resend_api_key: str
+    email_from_address: str
 
     model_config = SettingsConfigDict(
         env_file=".env",
