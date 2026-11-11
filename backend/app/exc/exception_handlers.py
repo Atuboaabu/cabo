@@ -81,3 +81,16 @@ def register_exception_handlers(app: FastAPI)->None:
                 "detail": f"Email send failed, content: {exc.content}" 
             }
         )
+    
+    @app.exception_handler(exceptions.VerificationCodeRateLimitException)
+    async def verification_code_rate_limit_handle(
+        request: Request,
+        exc: exceptions.VerificationCodeRateLimitException
+    ):
+        return JSONResponse(
+            status_code = status.HTTP_429_TOO_MANY_REQUESTS,
+            content = {
+                "code": "VERIFICATION_CODE_RATE_LIMIT",
+                "detail": "Verification code too many requests" 
+            }
+        )

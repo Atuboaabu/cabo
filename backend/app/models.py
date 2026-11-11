@@ -89,6 +89,5 @@ class EmailVerificationCode(Base):
 
     last_issued_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        server_default=func.now(),
         nullable=False
     )

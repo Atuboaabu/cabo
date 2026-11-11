@@ -20,3 +20,6 @@ class UserNameConflictException(Exception):
 class EmailSendFailedException(Exception):
     def __init__(self, content: str) -> None:
         self.content = content
+
+class VerificationCodeRateLimitException(Exception):
+    pass

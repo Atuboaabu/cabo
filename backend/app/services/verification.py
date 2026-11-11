@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import select, func, text
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert
 from datetime import datetime, timezone, timedelta
@@ -27,15 +27,20 @@ def generate_email_verification_code(
             code_digest=code_digest,
             expires_at=expires_at,
             consumed_at=None,
-            attempt_count=0
+            attempt_count=0,
+            last_issued_at=func.now()
         ).on_conflict_do_update(
             index_elements = [EmailVerificationCode.normalized_email],
             set_={
                 "code_digest": code_digest,
                 "expires_at": expires_at,
                 "consumed_at": None,
-                "attempt_count": 0
-            }
+                "attempt_count": 0,
+                "last_issued_at": func.now()
+            },
+            where=(
+                EmailVerificationCode.last_issued_at <= func.now() - text("INTERVAL '60 seconds'")
+            ),
         ).returning(
             EmailVerificationCode.id
         )
