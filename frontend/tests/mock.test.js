@@ -223,3 +223,22 @@ test('resend button waits for accepted send and is never reenabled during cooldo
  assert.match(app,/name="confirmPassword" required/);
  assert.match(app,/id="password-confirmation-status" role="status" aria-live="polite"/);
 });
+
+test('registration feedback uses accessible themed success, error and progress states',async()=>{
+ const {readFileSync}=await import('node:fs');
+ const app=readFileSync(new URL('../src/app.js',import.meta.url),'utf8');
+ const css=readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
+ assert.match(app,/function showFormFeedback\(element, message, tone='info'\)/);
+ assert.match(app,/element\.dataset\.tone=tone/);
+ assert.match(app,/tone==='error'\?'alert':'status'/);
+ assert.match(app,/showFormFeedback\(status,error\.message\|\|/);
+ assert.match(app,/showFormFeedback\(feedback,error\.message\|\|/);
+ assert.match(app,/showFormFeedback\(message,error,error\?'error':'info'\)/);
+ assert.match(app,/registration-complete/);
+ assert.match(css,/\[data-tone="error"\]/);
+ assert.match(css,/\[data-tone="success"\]/);
+ assert.match(css,/\[data-tone="info"\]/);
+ assert.match(css,/input\[aria-invalid="true"\]/);
+ assert.match(css,/\.notice\.success/);
+ assert.match(css,/\.notice\.error/);
+});
