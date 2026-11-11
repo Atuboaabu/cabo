@@ -1,7 +1,7 @@
 import uuid
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy import String, DateTime, func, CheckConstraint
+from sqlalchemy import String, DateTime, func, CheckConstraint, ForeignKey
 from datetime import datetime
 
 from app.database import Base
@@ -90,4 +90,45 @@ class EmailVerificationCode(Base):
     last_issued_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False
+    )
+
+class AuthSession(Base):
+    __tablename__ = "auth_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+
+    account_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("user_accounts.id"),
+        nullable=False
+    )
+
+    token_digest: Mapped[str] = mapped_column(
+        nullable=False,
+        unique=True,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False
+    )
+
+    last_activity_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True)
+    )
+
+    idle_expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True)
+    )
+
+    absolute_expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True)
+    )
+
+    revoked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True)
     )
