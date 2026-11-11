@@ -49,10 +49,11 @@ def generate_email_verification_code(
         verify_id = session.execute(
             statement
         ).scalar_one_or_none()
-        session.commit()
 
         if verify_id is None:
             raise exceptions.VerificationCodeRateLimitException()
+
+        session.commit()
 
     except Exception:
         session.rollback()
