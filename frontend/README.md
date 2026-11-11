@@ -91,3 +91,7 @@ The `确认密码` field checks against `密码` **as the user types**. Mismatch
 ## More visible registration feedback
 
 The registration form now uses themed inline feedback close to the relevant field, without changing the CABO table/ parchment design: muted gold for requests in progress, dark green for accepted code requests and successful registration, and warm burgundy for errors such as `EMAIL_ALREADY_REGISTERED`, name conflicts, invalid codes or rate limiting. A password confirmation mismatch is also emphasized on the field border. Errors use an accessible alert role; informational and success states use polite status announcements. The resend countdown button stays legible while disabled. The Mock status notice follows the same restrained success/error colors but remains separate from real registration requests. All backend result/authorization semantics are unchanged.
+
+## Signup label and confirmation warning
+
+The signup field is now simply labeled **昵称** with the placeholder **设置昵称（不可重复）**. This is presentation terminology only: the value still maps from the frontend `nickname` to backend `username`, and AUTH-18-R1 requires that nickname/game display name be globally unique. The confirmation-password mismatch uses a stronger CABO-themed burgundy warning panel with an exclamation marker and highlighted input border, announced via the existing accessible live status; the message clears when the two passwords match.
