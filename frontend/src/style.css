@@ -14,3 +14,64 @@
 @media(max-width:380px){.registration-verification .code-row{flex-direction:column}.registration-verification .code-row button{max-width:none}}
 
 .registration-verification #registration-code-status:empty{display:none}
+
+/* CABO feedback hierarchy: parchment surfaces with restrained ink colors. */
+.auth-panel .form-feedback,
+.auth-panel .password-confirmation-status,
+.auth-panel .registration-complete {
+  font: 600 13px/1.6 system-ui,sans-serif;
+  text-align:left;
+  border-radius:10px;
+  padding:11px 13px;
+  margin:0;
+  border:1px solid transparent;
+}
+.auth-panel .form-feedback:empty,
+.auth-panel .password-confirmation-status:empty {display:none}
+.auth-panel [data-tone="error"] {
+  background:#f9e7e1;
+  color:#78352d;
+  border-color:#bd8577;
+  box-shadow:inset 3px 0 #a65244;
+}
+.auth-panel [data-tone="success"],.auth-panel .registration-complete {
+  background:#e8efe0;
+  color:#234e32;
+  border-color:#9aaa83;
+  box-shadow:inset 3px 0 #527b4b;
+}
+.auth-panel [data-tone="info"] {
+  background:#f3ead5;
+  color:#6a532d;
+  border-color:#ceb88a;
+}
+.auth-panel input[aria-invalid="true"] {
+  border:2px solid #a65244;
+  background:#fff0e9;
+  box-shadow:0 0 0 2px #a6524420;
+}
+.auth-panel .registration-verification .form-feedback{
+  font:600 13px/1.6 system-ui,sans-serif;
+  padding:11px 13px;
+}
+.auth-panel .registration-verification button:disabled {
+  opacity:1;
+  color:#645533;
+  background:#e6d9bc;
+  border-color:#baa67e;
+  cursor:not-allowed;
+  box-shadow:none;
+  transform:none;
+}
+.notice.success {
+  background:#e8efe0;
+  color:#234e32;
+  border-color:#8eaa85;
+  box-shadow:0 12px 35px #0003,inset 4px 0 #527b4b;
+}
+.notice.error {
+  background:#fae8df;
+  color:#78352d;
+  border-color:#bc8174;
+  box-shadow:0 12px 35px #0003,inset 4px 0 #a65244;
+}
