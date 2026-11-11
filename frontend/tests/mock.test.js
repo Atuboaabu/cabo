@@ -101,7 +101,7 @@ test('login UI offers registration and recovery only; other auth screens return 
  assert.match(app,/\[\['register','注册账号'\],\['forgot','忘记密码？'\]\]/);
  assert.match(app,/\[\['login','返回登录'\]\]/);
  assert.match(app,/name="nickname" required/);
- assert.match(app,/nickname:p.nickname/);
+ assert.match(app,/api\.register\(\{nickname:data\.nickname/);
 });
 
 test('registration password confirmation must match and never gets sent as credentials', async()=>{
@@ -115,7 +115,7 @@ test('registration password confirmation must match and never gets sent as crede
  assert.match(app,/name="confirmPassword" required/);
  assert.match(app,/!passwordsMatch\(p\.password,p\.confirmPassword\)/);
  assert.match(app,/setCustomValidity\('两次输入的密码不一致'\)/);
- assert.match(app,/\{email:p\.email,nickname:p\.nickname,password:p\.password,code:p\.code\}/);
+ assert.match(app,/api\.register\(\{nickname:data\.nickname,email:data\.email,password:data\.password,code:data\.code\}\)/);
 });
 
 test('registration shows concise verification label without repeated demo guidance', async()=>{
