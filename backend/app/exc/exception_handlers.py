@@ -70,7 +70,7 @@ def register_exception_handlers(app: FastAPI)->None:
         )
     
     @app.exception_handler(exceptions.EmailSendFailedException)
-    async def username_existed_handle(
+    async def email_send_failed_handle(
         request: Request,
         exc: exceptions.EmailSendFailedException
     ):

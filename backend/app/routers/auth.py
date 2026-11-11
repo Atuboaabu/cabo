@@ -33,7 +33,6 @@ async def get_verification_code(
         display_email,
         verify_code
     )
-    print(f"get_verification_code result = {result}")
 
 @router.post(
     "/register",
