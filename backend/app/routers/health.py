@@ -7,7 +7,7 @@ router = APIRouter(
 )
 
 @router.get(
-    "/"
+    ""
 )
 def get_health():
     return JSONResponse(

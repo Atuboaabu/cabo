@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, status
 
 from app.depencicies.session import SessionDep
 from app.schemas import UserAccountCreate, UserAccountResponse, VerificationCodeRequest
@@ -35,7 +35,8 @@ def get_verification_code(
 
 @router.post(
     "/register",
-    response_model=UserAccountResponse
+    response_model=UserAccountResponse,
+    status_code=status.HTTP_201_CREATED
 )
 def register_useraccount(
     session: SessionDep,

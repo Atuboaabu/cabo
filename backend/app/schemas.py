@@ -28,4 +28,4 @@ class UserAccountResponse(BaseModel):
 
 class VerificationCodeRequest(BaseModel):
     email_address: EmailStr
-    purpose: Literal["registration", "change_info", "log_out"]
+    purpose: Literal["registration"]
