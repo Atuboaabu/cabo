@@ -103,7 +103,8 @@ class AuthSession(Base):
 
     account_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("user_accounts.id"),
-        nullable=False
+        nullable=False,
+        index=True
     )
 
     token_digest: Mapped[str] = mapped_column(
@@ -118,17 +119,21 @@ class AuthSession(Base):
     )
 
     last_activity_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True)
+        DateTime(timezone=True),
+        nullable=False
     )
 
     idle_expires_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True)
+        DateTime(timezone=True),
+        nullable=False
     )
 
     absolute_expires_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True)
+        DateTime(timezone=True),
+        nullable=False
     )
 
     revoked_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True)
+        DateTime(timezone=True),
+        nullable=True
     )
