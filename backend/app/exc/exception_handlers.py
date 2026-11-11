@@ -51,8 +51,8 @@ def register_exception_handlers(app: FastAPI)->None:
         return JSONResponse(
             status_code = status.HTTP_409_CONFLICT,
             content = {
-                "code": "USER_ACCOUNT_EXISTED",
-                "detail": "User account is already existed" 
+                "code": "EMAIL_ALREADY_REGISTERED",
+                "detail": "Email is already registered" 
             }
         )
     
