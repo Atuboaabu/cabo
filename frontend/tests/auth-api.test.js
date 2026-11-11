@@ -68,3 +68,13 @@ test('app keeps Mock demo separate from real registration and shows return to lo
  assert.doesNotMatch(app,/gateway\.send\('register'/);
  assert.doesNotMatch(app,/gateway\.send\('requestRegistrationCode'/);
 });
+
+test('registered email reports explicit already-registered message',async()=>{
+ const api=createAuthApi({fetchImpl:async()=>response(409,{code:'EMAIL_ALREADY_REGISTERED'})});
+ await assert.rejects(
+   api.register({nickname:'Alice',email:'alice@example.com',password:'test-secret',code:'012345'}),
+   error=>error instanceof AuthApiError && error.status===409 &&
+     error.code==='EMAIL_ALREADY_REGISTERED' &&
+     error.message==='该邮箱已注册，请直接登录或使用其他邮箱注册。'
+ );
+});
