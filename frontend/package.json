@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "python3 -m http.server 5173",
     "build": "node scripts/build.mjs",
-    "check": "node --check src/app.js && node --check src/mock.js && node --check src/adapter.js",
+    "check": "node --check src/app.js && node --check src/mock.js && node --check src/adapter.js && node --check src/auth-api.js && node --check src/registration.js",
     "test": "node --test tests/*.test.js"
   }
 }
