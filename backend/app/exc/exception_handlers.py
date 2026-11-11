@@ -94,3 +94,16 @@ def register_exception_handlers(app: FastAPI)->None:
                 "detail": "Verification code too many requests" 
             }
         )
+    
+    @app.exception_handler(exceptions.InvalidCredentialsException)
+    async def invalid_credentials_handle(
+        request: Request,
+        exc: exceptions.InvalidCredentialsException
+    ):
+        return JSONResponse(
+            status_code = status.HTTP_404_NOT_FOUND,
+            content = {
+                "code": "INVALID_CREDENTIALS",
+                "detail": "Invalid email or password, Please check" 
+            }
+        )

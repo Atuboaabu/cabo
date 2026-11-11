@@ -23,3 +23,6 @@ class EmailSendFailedException(Exception):
 
 class VerificationCodeRateLimitException(Exception):
     pass
+
+class InvalidCredentialsException(Exception):
+    pass

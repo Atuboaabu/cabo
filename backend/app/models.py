@@ -77,7 +77,7 @@ class EmailVerificationCode(Base):
         nullable=False
     )
 
-    consumed_at: Mapped[datetime] = mapped_column(
+    consumed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True
     )
@@ -133,7 +133,7 @@ class AuthSession(Base):
         nullable=False
     )
 
-    revoked_at: Mapped[datetime] = mapped_column(
+    revoked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True
     )
