@@ -1,10 +1,12 @@
 import { gateway } from './mock.js';
 import { assertCompatible, formatRemaining } from './adapter.js';
-import { passwordsMatch } from './registration.js';
+import { passwordsMatch, passwordConfirmationFeedback, resendSecondsRemaining, VERIFICATION_COOLDOWN_MS } from './registration.js';
 import { createAuthApi } from './auth-api.js';
 
 const root=document.querySelector('#app');
 let view,screen='auth',authMode='login',notice='',busy=false,selected=[],modal=null,request=0;
+let verificationCooldownUntil=0;
+let verificationRequestPending=false;
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const btn=(label,action,kind='outline',disabled=false)=>'<button type="button" class="'+kind+'" data-action="'+esc(action)+'" '+(disabled||busy?'disabled':'')+'>'+esc(label)+'</button>';
 const actions=()=>new Set(view.game?.legalActions||[]);
@@ -26,8 +28,9 @@ function authentication(){
  const registration=authMode==='register';
  const email=authMode!=='reset'?'<label>邮箱<input type="email" name="email" required autocomplete="email" placeholder="输入可接收邮件的邮箱地址"></label>':'';
  const password=['login','register','reset'].includes(authMode)?'<label>密码<input type="password" name="password" required autocomplete="'+(authMode==='login'?'current-password':'new-password')+'" placeholder="输入密码"></label>':'';
- const confirmation=registration?'<label>确认密码<input type="password" name="confirmPassword" required autocomplete="new-password" placeholder="再次输入密码"></label>':'';
- const code=registration?'<div class="registration-verification"><label for="registration-code">验证码</label><div class="code-row"><input id="registration-code" name="code" inputmode="numeric" pattern="[0-9]+" autocomplete="one-time-code" required placeholder="输入验证码" aria-describedby="registration-code-status"><button type="button" class="outline" data-action="requestRegistrationCode">发送验证码</button></div><p class="hint" id="registration-code-status" role="status" aria-live="polite"></p></div>':'';
+ const confirmation=registration?'<label>确认密码<input type="password" name="confirmPassword" required autocomplete="new-password" placeholder="再次输入密码" aria-describedby="password-confirmation-status"></label><p class="hint password-confirmation-status" id="password-confirmation-status" role="status" aria-live="polite"></p>':'';
+ const seconds=resendSecondsRemaining(verificationCooldownUntil);
+ const code=registration?'<div class="registration-verification"><label for="registration-code">验证码</label><div class="code-row"><input id="registration-code" name="code" inputmode="numeric" pattern="[0-9]+" autocomplete="one-time-code" required placeholder="输入验证码" aria-describedby="registration-code-status"><button type="button" class="outline" data-action="requestRegistrationCode" '+(seconds>0||verificationRequestPending?'disabled':'')+'>'+(seconds>0?seconds+'秒后重发':verificationRequestPending?'发送中…':'发送验证码')+'</button></div><p class="hint" id="registration-code-status" role="status" aria-live="polite"></p></div>':'';
  const nickname=registration?'<label>注册名（游戏展示名）<input type="text" name="nickname" required autocomplete="nickname" placeholder="设置全局唯一的注册名"></label>':'';
  const authLinks=authMode==='login'
   ?[['register','注册账号'],['forgot','忘记密码？']]
@@ -94,20 +97,44 @@ async function send(command,payload={}){
 }
 // Real registration is deliberately separate from the Mock Gateway and its
 // session/Room state. Form values remain in the DOM on errors for correction.
+function updateVerificationCountdown(){
+ const seconds=resendSecondsRemaining(verificationCooldownUntil);
+ const button=root.querySelector('#auth-form [data-action="requestRegistrationCode"]');
+ if(!button)return;
+ button.disabled=verificationRequestPending||seconds>0;
+ button.textContent=seconds>0?seconds+'秒后重发':verificationRequestPending?'发送中…':'发送验证码';
+}
+function updatePasswordConfirmation(form){
+ const password=form?.elements.namedItem('password');
+ const confirmation=form?.elements.namedItem('confirmPassword');
+ const message=form?.querySelector('#password-confirmation-status');
+ if(!password||!confirmation||!message)return;
+ const error=passwordConfirmationFeedback(password.value,confirmation.value);
+ confirmation.setCustomValidity(error);
+ confirmation.setAttribute('aria-invalid',error?'true':'false');
+ message.textContent=error;
+ message.classList.toggle('error',!!error);
+}
 async function requestRealRegistrationCode(button){
+ if(verificationRequestPending||resendSecondsRemaining(verificationCooldownUntil)>0)return;
  const form=root.querySelector('#auth-form');
  const email=form?.elements.namedItem('email');
  if(!email||!email.reportValidity()||button.disabled)return;
  const status=form.querySelector('#registration-code-status');
- button.disabled=true;
+ verificationRequestPending=true;
+ updateVerificationCountdown();
  status.textContent='正在发送验证码…';
  try{
   const api=createAuthApi();
   await api.requestRegistrationCode(email.value);
+  verificationCooldownUntil=Date.now()+VERIFICATION_COOLDOWN_MS;
   if(form.isConnected)status.textContent='验证码请求已受理，请检查邮箱。';
  }catch(error){
   if(form.isConnected)status.textContent=error.message||'验证码发送失败，请稍后重试。';
- }finally{if(button.isConnected)button.disabled=false;}
+ }finally{
+  verificationRequestPending=false;
+  updateVerificationCountdown();
+ }
 }
 async function submitRealRegistration(form,data){
  const button=form.querySelector('button[type="submit"]');
@@ -127,7 +154,7 @@ async function submitRealRegistration(form,data){
   if(form.isConnected)feedback.textContent=error.message||'注册未完成，请稍后重试。';
  }finally{
   if(button.isConnected)button.disabled=false;
-  if(codeButton?.isConnected)codeButton.disabled=false;
+  if(codeButton?.isConnected)updateVerificationCountdown();
  }
 }
 root.addEventListener('click',e=>{
@@ -154,19 +181,19 @@ root.addEventListener('click',e=>{
 });
 root.addEventListener('input',e=>{
  if(e.target?.name==='confirmPassword'||e.target?.name==='password'){
-  const form=e.target.closest('form');
-  form?.elements.namedItem('confirmPassword')?.setCustomValidity('');
+  updatePasswordConfirmation(e.target.closest('form'));
  }
 });
 root.addEventListener('submit',e=>{
  e.preventDefault();
  const f=e.target,p=Object.fromEntries(new FormData(f));
  if(f.id==='auth-form'){
-  if(authMode==='register'&&!passwordsMatch(p.password,p.confirmPassword)){
-   const confirmInput=f.elements.namedItem('confirmPassword');
-   confirmInput?.setCustomValidity('两次输入的密码不一致');
-   confirmInput?.reportValidity();
-   return;
+  if(authMode==='register'){
+   updatePasswordConfirmation(f);
+   if(!passwordsMatch(p.password,p.confirmPassword)){
+    f.elements.namedItem('confirmPassword')?.reportValidity();
+    return;
+   }
   }
   if(authMode==='register'){submitRealRegistration(f,p);return;}
   send(({forgot:'requestRecovery',verify:'requestVerification',reset:'resetPassword'})[authMode]||authMode,p);
@@ -178,6 +205,7 @@ setInterval(()=>{
  const updated=gateway.snapshot();
  if(updated.game?.phase!==view.game?.phase||updated.game?.turnStep!==view.game?.turnStep||updated.session!==view.session){render();return;}
  root.querySelectorAll('[data-deadline]').forEach(el=>{const d=Number(el.dataset.deadline)||null;el.textContent=(el.id==='timer'?'⏱ ':'')+formatRemaining(d);});
+ updateVerificationCountdown();
 },500);
 window.addEventListener('keydown',e=>{if(e.altKey&&e.shiftKey&&e.key.toLowerCase()==='m'){e.preventDefault();confirm('模拟新设备接管','旧连接会停止接受受保护操作。','takeover');}});
 render();
