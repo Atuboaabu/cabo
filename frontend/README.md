@@ -12,7 +12,7 @@ npm test
 npm run build
 ```
 
-The dev command uses Python’s built-in HTTP static server. `npm run build` emits `dist/` without installing packages.
+The dev command uses a dependency-free Node HTTP server with a **development-only same-origin proxy** for the two real registration endpoints. By default it forwards them to FastAPI at `http://localhost:8000`, avoiding browser CORS failures on `localhost:5173`. `npm run build` emits `dist/` without installing packages.
 
 ## Adapter boundary
 
@@ -55,14 +55,14 @@ The registration screen uses **real HTTP calls**, not the Mock Gateway. The rest
 
 ### API base URL configuration
 
-By default, the browser sends requests to `http://localhost:8000`. You can override it by declaring `window.CABO_API_BASE_URL` **before** the app module loads. Example for local staging:
+By default, a static production build sends requests to `http://localhost:8000`. In **local dev**, `npm run dev` serves the frontend on `http://localhost:5173`, injects the same-origin API base for the two registration endpoints, and proxies those POSTs to FastAPI at `http://localhost:8000`. You can override the public API address by declaring `window.CABO_API_BASE_URL` **before** the app module loads. Example for local staging:
 
 ```html
 <script>window.CABO_API_BASE_URL = 'https://api.example.test';</script>
 <script type="module" src="/src/app.js"></script>
 ```
 
-Place this in your local / deployment version of `frontend/index.html` before the existing module script, or set it using deployment-specific HTML. Only an http(s) **origin** is supported (no API suffix, credentials, query or fragment). This configuration is not a credential or session field. If the frontend runs on a different host/port, **FastAPI must permit that browser origin via CORS**; this PR does not alter backend CORS policy. A remotely hosted frontend cannot reach the visitor's localhost unless FastAPI is running on that visitor's machine.
+Place this in your deployment-specific `frontend/index.html` before the existing module script, or set it using your deployment HTML configuration. The dev proxy target can be changed via `CABO_BACKEND_URL=https://your-api-host npm run dev`, and its local port via `PORT=5173`. The dev proxy only forwards POST `/auth/verification-codes` and POST `/auth/register`, never other authenticated/session routes. Only an http(s) **origin** is supported (no API suffix, credentials, query or fragment). This configuration is not a credential or session field. If a **static deployed frontend** connects directly to a different host/port, **FastAPI must permit the browser origin via CORS**; this PR does not alter backend CORS policy. The localhost dev proxy avoids that requirement during local registration development. A remotely hosted frontend cannot reach the visitor's localhost unless FastAPI is running on that visitor's machine.
 
 ### Endpoints
 
