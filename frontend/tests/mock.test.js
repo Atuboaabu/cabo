@@ -114,7 +114,8 @@ test('registration password confirmation must match and never gets sent as crede
  const app=readFileSync(new URL('../src/app.js',import.meta.url),'utf8');
  assert.match(app,/name="confirmPassword" required/);
  assert.match(app,/!passwordsMatch\(p\.password,p\.confirmPassword\)/);
- assert.match(app,/setCustomValidity\('两次输入的密码不一致'\)/);
+ assert.match(app,/setCustomValidity\(error\)/);
+ assert.match(app,/updatePasswordConfirmation\(e\.target\.closest\('form'\)\)/);
  assert.match(app,/api\.register\(\{nickname:data\.nickname,email:data\.email,password:data\.password,code:data\.code\}\)/);
 });
 
@@ -191,4 +192,34 @@ test('AUTH-18-R1: UI and README contain no duplicate-name or unverified-play cla
  assert.doesNotMatch(mock,/重名合法/);
  assert.doesNotMatch(readme,/non-unique display label/);
  assert.match(readme,/AUTH-18-R1/);
+});
+
+test('60-second resend countdown rounds up and expires at original deadline', async()=>{
+ const { resendSecondsRemaining, VERIFICATION_COOLDOWN_MS } = await import('../src/registration.js');
+ const started=100_000, until=started+VERIFICATION_COOLDOWN_MS;
+ assert.equal(VERIFICATION_COOLDOWN_MS,60_000);
+ assert.equal(resendSecondsRemaining(until,started),60);
+ assert.equal(resendSecondsRemaining(until,started+1),60);
+ assert.equal(resendSecondsRemaining(until,started+1000),59);
+ assert.equal(resendSecondsRemaining(until,until-1),1);
+ assert.equal(resendSecondsRemaining(until,until),0);
+ assert.equal(resendSecondsRemaining(until,until+1000),0);
+});
+test('password confirmation warns on every input, clears when matching', async()=>{
+ const { passwordConfirmationFeedback } = await import('../src/registration.js');
+ assert.equal(passwordConfirmationFeedback('abc',''),'');
+ assert.equal(passwordConfirmationFeedback('abc','a'),'两次输入的密码不一致');
+ assert.equal(passwordConfirmationFeedback('abc','abc'),'');
+ assert.equal(passwordConfirmationFeedback('abcd','abc'),'两次输入的密码不一致');
+ assert.equal(passwordConfirmationFeedback('abcd','abcd'),'');
+});
+test('resend button waits for accepted send and is never reenabled during cooldown', async()=>{
+ const { readFileSync } = await import('node:fs');
+ const app=readFileSync(new URL('../src/app.js',import.meta.url),'utf8');
+ assert.match(app,/verificationRequestPending\|\|resendSecondsRemaining\(verificationCooldownUntil\)>0/);
+ assert.match(app,/verificationCooldownUntil=Date\.now\(\)\+VERIFICATION_COOLDOWN_MS/);
+ assert.match(app,/button\.disabled=verificationRequestPending\|\|seconds>0/);
+ assert.match(app,/updateVerificationCountdown\(\);/);
+ assert.match(app,/name="confirmPassword" required/);
+ assert.match(app,/id="password-confirmation-status" role="status" aria-live="polite"/);
 });
