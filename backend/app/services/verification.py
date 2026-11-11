@@ -5,6 +5,7 @@ from datetime import datetime, timezone, timedelta
 
 from app.security.verification import generate_code, hash_verification_code, compare_verification_code
 from app.models import EmailVerificationCode
+from app.exc import exceptions
 
 MAX_ATTEMPTS = 5
 
@@ -51,7 +52,7 @@ def generate_email_verification_code(
         session.commit()
 
         if verify_id is None:
-            return None
+            raise exceptions.VerificationCodeRateLimitException()
 
     except Exception:
         session.rollback()
