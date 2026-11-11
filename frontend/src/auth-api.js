@@ -29,7 +29,7 @@ export class AuthApiError extends Error {
 }
 
 const ERROR_MESSAGES = {
-  USERNAME_TAKEN: '该注册名已被使用，请更换注册名。',
+  USERNAME_TAKEN: '该昵称已被占用，请更换昵称。',
   EMAIL_ALREADY_REGISTERED: '该邮箱已注册，请直接登录或使用其他邮箱注册。',
   INVALID_USERNAME: '注册名格式不符合要求，请检查后重试。',
   INVALID_EMAIL_ADDRESS: '邮箱格式不正确，请检查后重试。',
