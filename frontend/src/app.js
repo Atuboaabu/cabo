@@ -1,6 +1,7 @@
 import { gateway } from './mock.js';
 import { assertCompatible, formatRemaining } from './adapter.js';
 import { passwordsMatch } from './registration.js';
+import { createAuthApi } from './auth-api.js';
 
 const root=document.querySelector('#app');
 let view,screen='auth',authMode='login',notice='',busy=false,selected=[],modal=null,request=0;
@@ -10,9 +11,10 @@ const actions=()=>new Set(view.game?.legalActions||[]);
 const nav=x=>{screen=x;selected=[];render();};
 function shell(inner,cls=''){
  const room=view.room, account=view.account;
- return '<div class="app-shell"><header class="topbar"><div class="brand"><span class="brand-icon">♤</span>cabo'+(room?'<span class="room-chip">房间 '+esc(room.id)+'</span>':'')+'</div><div class="top-actions"><span class="mock-tag">◈ MOCK · 受限演示</span>'+(account?btn('当前房间','lobby','small quiet')+btn('设置','settings','small quiet')+btn('退出','logout','small quiet'):'')+'<span class="connection '+esc(view.connection)+'">● '+({connected:'已连接',disconnected:'已断线','taken-over':'连接已被接管'}[view.connection]||'未连接')+'</span></div></header>'+(notice?'<div class="notice" role="status">'+esc(notice)+btn('×','dismiss','close')+'</div>':'')+'<main class="main '+cls+'">'+inner+'</main>'+(account?'<aside class="qa-strip" aria-label="Mock 场景"><strong>演示场景</strong>'+['disconnect','reconnect','takeover','reclaim','expireSession'].map((a,i)=>btn(['断线','重连','新设备接管','重新接管','会话过期'][i],a,'small outline')).join('')+'</aside>':'')+'<footer class="footer">一张圆桌，一起 CABO。</footer>'+(modal?'<div class="veil"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><h2 id="modal-title">'+esc(modal.title)+'</h2><p>'+esc(modal.message)+'</p><div class="button-row">'+btn('取消','cancelModal')+btn('确认','confirmModal',modal.danger?'danger':'primary')+'</div></section></div>':'')+'</div>';
+ return '<div class="app-shell"><header class="topbar"><div class="brand"><span class="brand-icon">♤</span>cabo'+(room?'<span class="room-chip">房间 '+esc(room.id)+'</span>':'')+'</div><div class="top-actions"><span class="mock-tag">'+(authMode==='register'||authMode==='registered'?'注册 · FastAPI':'◈ MOCK · 受限演示')+'</span>'+(account?btn('当前房间','lobby','small quiet')+btn('设置','settings','small quiet')+btn('退出','logout','small quiet'):'')+'<span class="connection '+esc(view.connection)+'">● '+({connected:'已连接',disconnected:'已断线','taken-over':'连接已被接管'}[view.connection]||'未连接')+'</span></div></header>'+(notice?'<div class="notice" role="status">'+esc(notice)+btn('×','dismiss','close')+'</div>':'')+'<main class="main '+cls+'">'+inner+'</main>'+(account?'<aside class="qa-strip" aria-label="Mock 场景"><strong>演示场景</strong>'+['disconnect','reconnect','takeover','reclaim','expireSession'].map((a,i)=>btn(['断线','重连','新设备接管','重新接管','会话过期'][i],a,'small outline')).join('')+'</aside>':'')+'<footer class="footer">一张圆桌，一起 CABO。</footer>'+(modal?'<div class="veil"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><h2 id="modal-title">'+esc(modal.title)+'</h2><p>'+esc(modal.message)+'</p><div class="button-row">'+btn('取消','cancelModal')+btn('确认','confirmModal',modal.danger?'danger':'primary')+'</div></section></div>':'')+'</div>';
 }
 function authentication(){
+ if(authMode==='registered')return shell('<section class="auth-stage"><div class="felt-table" aria-hidden="true"><div class="table-line"></div></div><div class="auth-panel"><div class="ornament">♧　♤　♧</div><h1 class="auth-logo">cabo</h1><div class="rule"></div><h2>注册成功</h2><p class="subtitle">账号已创建，请返回登录页面使用邮箱和密码登录。</p><button type="button" class="primary full" data-auth="login">返回登录</button></div></section>','auth-main');
  const config={
   login:['入座，开始这一局','欢迎回到 CABO。','登录'],
   register:['加入 CABO 圆桌','设置账号，和朋友一起开局。','验证并注册'],
@@ -31,7 +33,7 @@ function authentication(){
   ?[['register','注册账号'],['forgot','忘记密码？']]
   :[['login','返回登录']];
  const loginDemo=authMode==='login'?'<div class="demo-entry">'+btn('进入本地 Mock 演示','enterDemo','outline full')+'</div>':'';
- return shell('<section class="auth-stage"><div class="felt-table" aria-hidden="true"><div class="table-line"></div><div class="ornamental-deck">♠<small>CABO</small></div></div><div class="auth-panel"><div class="ornament">♧　♤　♧</div><h1 class="auth-logo">cabo</h1><div class="rule"></div><h2>'+heading+'</h2><p class="subtitle">'+subtitle+'</p><form id="auth-form">'+(authMode==='reset'?'<label>恢复凭据<input name="token" required autocomplete="off"></label>':email)+nickname+password+confirmation+code+'<button class="primary full" type="submit" '+(busy?'disabled':'')+'>'+submit+'</button></form>'+loginDemo+'<div class="auth-bottom">'+authLinks.map(([mode,label])=>'<a href="#'+mode+'" data-auth="'+mode+'">'+label+'</a>').join(' · ')+'</div></div></section>','auth-main');
+ return shell('<section class="auth-stage"><div class="felt-table" aria-hidden="true"><div class="table-line"></div><div class="ornamental-deck">♠<small>CABO</small></div></div><div class="auth-panel"><div class="ornament">♧　♤　♧</div><h1 class="auth-logo">cabo</h1><div class="rule"></div><h2>'+heading+'</h2><p class="subtitle">'+subtitle+'</p><form id="auth-form">'+(authMode==='reset'?'<label>恢复凭据<input name="token" required autocomplete="off"></label>':email)+nickname+password+confirmation+code+'<button class="primary full" type="submit" '+(busy?'disabled':'')+'>'+submit+'</button>'+(registration?'<p class="hint" id="registration-feedback" role="status" aria-live="polite"></p>':'')+'</form>'+loginDemo+'<div class="auth-bottom">'+authLinks.map(([mode,label])=>'<a href="#'+mode+'" data-auth="'+mode+'">'+label+'</a>').join(' · ')+'</div></div></section>','auth-main');
 }
 function dashboard(){
  if(!view.room)return shell('<section class="dashboard"><div class="intro"><span class="eyebrow">THE CABO CLUB</span><h1>今晚，围坐一桌。</h1><p>创建圆桌或输入房间编号。每个账号同时最多属于一个 Room。</p></div><div class="lobby-grid"><article class="paper-card"><div class="card-symbol">♤</div><h2>创建房间</h2><p>成为 Host，邀请最多三位朋友。</p>'+btn('创建新房间','createRoom','primary full')+'</article><article class="paper-card"><div class="card-symbol">♧</div><h2>加入房间</h2><p>输入朋友提供的编号。</p><form id="join-form"><label>房间编号<input name="code" required placeholder="例如 042"></label><button type="submit" class="primary full">加入房间</button></form></article></div></section>','dashboard-main');
@@ -90,25 +92,51 @@ async function send(command,payload={}){
  }catch(e){notice='操作结果不确定，请同步权威 View：'+e.message;}
  finally{busy=false;render();}
 }
+// Real registration is deliberately separate from the Mock Gateway and its
+// session/Room state. Form values remain in the DOM on errors for correction.
+async function requestRealRegistrationCode(button){
+ const form=root.querySelector('#auth-form');
+ const email=form?.elements.namedItem('email');
+ if(!email||!email.reportValidity()||button.disabled)return;
+ const status=form.querySelector('#registration-code-status');
+ button.disabled=true;
+ status.textContent='正在发送验证码…';
+ try{
+  const api=createAuthApi();
+  await api.requestRegistrationCode(email.value);
+  if(form.isConnected)status.textContent='验证码请求已受理，请检查邮箱。';
+ }catch(error){
+  if(form.isConnected)status.textContent=error.message||'验证码发送失败，请稍后重试。';
+ }finally{if(button.isConnected)button.disabled=false;}
+}
+async function submitRealRegistration(form,data){
+ const button=form.querySelector('button[type="submit"]');
+ const codeButton=form.querySelector('[data-action="requestRegistrationCode"]');
+ const feedback=form.querySelector('#registration-feedback');
+ if(!button||button.disabled)return;
+ button.disabled=true;
+ if(codeButton)codeButton.disabled=true;
+ feedback.textContent='正在提交注册…';
+ try{
+  const api=createAuthApi();
+  await api.register({nickname:data.nickname,email:data.email,password:data.password,code:data.code});
+  if(form.isConnected && authMode==='register'){
+   authMode='registered';notice='';render();
+  }
+ }catch(error){
+  if(form.isConnected)feedback.textContent=error.message||'注册未完成，请稍后重试。';
+ }finally{
+  if(button.isConnected)button.disabled=false;
+  if(codeButton?.isConnected)codeButton.disabled=false;
+ }
+}
 root.addEventListener('click',e=>{
  const link=e.target.closest('[data-auth]');
  if(link){e.preventDefault();authMode=link.dataset.auth;notice='';render();return;}
  const el=e.target.closest('[data-action]');if(!el||el.disabled)return;
  const a=el.dataset.action;
  if(a==='noop')return;
- if(a==='requestRegistrationCode'){
-  const form=root.querySelector('#auth-form'),email=form?.elements.namedItem('email')?.value||'';
-  const status=root.querySelector('#registration-code-status');
-  const button=el;
-  button.disabled=true;
-  if(status)status.textContent='正在请求发送，请勿重复提交……';
-  gateway.send('requestRegistrationCode',{email},'registration-send-'+(++request)).then(result=>{
-   if(status)status.textContent=(result.status==='Accepted'?'已受理发送请求。':'无法发送：')+result.message;
-  }).catch(()=>{
-   if(status)status.textContent='请求结果未知，请在同步服务端状态后再试。';
-  }).finally(()=>{button.disabled=false;});
-  return;
- }
+ if(a==='requestRegistrationCode'){requestRealRegistrationCode(el);return;}
  if(a==='dismiss'){notice='';render();return;}
  if(a==='cancelModal'){modal=null;render();return;}
  if(a==='confirmModal'){const m=modal;modal=null;send(m.command,m.payload);return;}
@@ -140,7 +168,8 @@ root.addEventListener('submit',e=>{
    confirmInput?.reportValidity();
    return;
   }
-  send(({forgot:'requestRecovery',verify:'requestVerification',reset:'resetPassword'})[authMode]||authMode,authMode==='register'?{email:p.email,nickname:p.nickname,password:p.password,code:p.code}:p);
+  if(authMode==='register'){submitRealRegistration(f,p);return;}
+  send(({forgot:'requestRecovery',verify:'requestVerification',reset:'resetPassword'})[authMode]||authMode,p);
  }
  if(f.id==='join-form')send('joinRoom',p);
  if(f.id==='name-form')send('changeName',p);

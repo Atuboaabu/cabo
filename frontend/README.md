@@ -12,13 +12,13 @@ npm test
 npm run build
 ```
 
-The dev command uses Python’s built-in HTTP static server. `npm run build` emits `dist/` without installing packages.
+The dev command uses a dependency-free Node HTTP server with a **development-only same-origin proxy** for the two real registration endpoints. By default it forwards them to FastAPI at `http://localhost:8000`, avoiding browser CORS failures on `localhost:5173`. `npm run build` emits `dist/` without installing packages.
 
 ## Adapter boundary
 
 `src/adapter.js` is an internal, provisional presentation adapter and **not** a FastAPI contract. `src/mock.js` supplies its UI-facing projection (`snapshot`) and command results (`send`). Replace the gateway with a real, authenticated adapter once owner-defined HTTP/WebSocket interfaces exist. The real adapter must provide authoritative Room and Player views, decision context, private grants and absolute deadlines, immutable request results, view semantic versions and reliable resync on event gaps.
 
-Mock modes are explicitly constrained: the login form does not authenticate against a real provider, email-code registration and mail sending are explicitly rejected (no Verified Account is fabricated), an **independent demo-only entry** creates a local fixture rather than registering or logging in, real password recovery/email verification/changes/deletion never succeed, no cross-tab/cross-device server coordination is claimed, no remote players actually act, hidden-hand equality and multi-card Replace are never guessed, Peek/Spy/Swap target authorization is rejected, score summaries are illustrative. Single-card Replace uses illustrative public discard values, not a true deck engine. A received accepted Mock outcome does **not** indicate a real FastAPI operation succeeded.
+Mock modes are explicitly constrained: the login form does not authenticate against a real provider, **registration and verification-code sending use the real FastAPI API client instead of Mock**, an **independent demo-only entry** creates a local fixture rather than registering or logging in, real password recovery/email verification/changes/deletion never succeed, no cross-tab/cross-device server coordination is claimed, no remote players actually act, hidden-hand equality and multi-card Replace are never guessed, Peek/Spy/Swap target authorization is rejected, score summaries are illustrative. Single-card Replace uses illustrative public discard values, not a true deck engine. A received accepted Mock outcome does **not** indicate a real FastAPI operation succeeded.
 
 Use Alt+Shift+M in the app for a takeover demo; reopening/reclaiming is available through adapter command. Programmatic `gateway.send('disconnect'/'reconnect'/'expireSession'/'takeover'/'reclaim')` enables isolated scenario tests. No secrets are persisted to LocalStorage.
 
@@ -30,7 +30,7 @@ This UI never represents a complete implementation of Phase 4 game rules, author
 
 Registration now displays the required globally unique registration/display name, email, password, numeric email verification code, a send/resend action and the final register action. The real backend must validate an ephemeral registration verification context (normalized email, purpose, expiry, replacement of previous codes, one-time consumption, abuse controls) and atomically enforce email uniqueness when completing registration; success creates a **Verified** account but does not automatically grant Room identity. The documents intentionally do not specify a fixed number of digits, cooldown duration, endpoint path or error-code schema.
 
-Until the owner implements the real email and registration adapter, both `requestRegistrationCode` and `register` reject with a local `MOCK_LIMIT` indication. No email is sent and no Account or Session is created. The independent **进入本地 Mock 演示** button activates an explicitly labeled fixture for other UI scenarios without claiming registration, email ownership or true authentication.
+The real registration form now calls FastAPI directly via `src/auth-api.js`, while `MockGateway` continues to reject its legacy registration commands. HTTP 202 means the code request was accepted; HTTP 201 with the public Account response means the account was created. The form then displays **注册成功 → 返回登录**; it does not invent an authenticated Session or enter a game Room. The independent **进入本地 Mock 演示** button activates an explicitly labeled fixture for other UI scenarios without claiming registration, email ownership or true authentication.
 
 ## Authentication screen navigation and nickname
 
@@ -48,3 +48,36 @@ Registration includes a required `确认密码` input. The frontend compares it 
 - A client-side free/occupied indicator is never sufficient: another account may register or rename concurrently. The backend must perform the final uniqueness check (including race cases) and reject conflicting requests without changing the original name, Account ID, Room Member, game participant or results.
 - **Constrained Mock interactions**: the names `小林`, `阿南` and `晚风` are *known demo fixtures*, so a registration intent or rename using one returns `DEMO_NAME_CONFLICT`. This is **not** a backend name availability query or a global unique-name decision. Other valid registration intents and rename attempts return `MOCK_LIMIT` rather than falsely passing unique-name checks. An empty name returns `INVALID_INPUT`; changing to the current name returns `UNCHANGED`; changes while Playing return `PLAYING_LOCK`. Failed changes keep the original name and identities intact.
 - Successful registration in the real flow requires a verified email plus the server's global email and display-name uniqueness checks. Pending or unverified new registrations do **not** create an Account or gain Room/Game privileges. The account settings UI no longer claims unverified email can participate.
+
+## Real FastAPI registration integration
+
+The registration screen uses **real HTTP calls**, not the Mock Gateway. The rest of the app (login, rooms and game) remains Mock-only until independent authentication/session contracts are implemented.
+
+### API base URL configuration
+
+By default, a static production build sends requests to `http://localhost:8000`. In **local dev**, `npm run dev` serves the frontend on `http://localhost:5173`, injects the same-origin API base for the two registration endpoints, and proxies those POSTs to FastAPI at `http://localhost:8000`. You can override the public API address by declaring `window.CABO_API_BASE_URL` **before** the app module loads. Example for local staging:
+
+```html
+<script>window.CABO_API_BASE_URL = 'https://api.example.test';</script>
+<script type="module" src="/src/app.js"></script>
+```
+
+Place this in your deployment-specific `frontend/index.html` before the existing module script, or set it using your deployment HTML configuration. The dev proxy target can be changed via `CABO_BACKEND_URL=https://your-api-host npm run dev`, and its local port via `PORT=5173`. The dev proxy only forwards POST `/auth/verification-codes` and POST `/auth/register`, never other authenticated/session routes. Only an http(s) **origin** is supported (no API suffix, credentials, query or fragment). This configuration is not a credential or session field. If a **static deployed frontend** connects directly to a different host/port, **FastAPI must permit the browser origin via CORS**; this PR does not alter backend CORS policy. The localhost dev proxy avoids that requirement during local registration development. A remotely hosted frontend cannot reach the visitor's localhost unless FastAPI is running on that visitor's machine.
+
+### Endpoints
+
+- **Send code**: `POST /auth/verification-codes` with `{"email_address":"alice@example.com","purpose":"registration"}`; only HTTP **202** is accepted.
+- **Register**: `POST /auth/register` with `{"username":"Alice","email":"alice@example.com","password":"...","verification_code":"012345"}`; only HTTP **201** with the public Account fields is accepted.
+- Existing UI `nickname → username` and `code → verification_code` mapping is kept inside `src/auth-api.js`. Password confirmation is checked in UI but **not transmitted**.
+- The Auth client maps backend codes `USERNAME_TAKEN`, `EMAIL_ALREADY_REGISTERED`, `VERIFICATION_CODE_RATE_LIMIT`, `EMAIL_SEND_ERROR`, `INVALID_VERIFICATION_CODE`, `INVALID_USERNAME` and `INVALID_EMAIL_ADDRESS` to readable messages, with fallback HTTP 400/409/422/429/5xx handling. No raw backend error detail, password, or verification code is logged or persisted.
+- A 201 response renders a separate success state and a **返回登录** action. Real login and session handling remain unimplemented by design; the separate Mock demo entry continues to function.
+
+### Local integration
+
+1. Start the backend (PostgreSQL migrations and email sending configuration must be working) at `http://localhost:8000`.
+2. In `frontend/` run `npm run dev`, then open `http://localhost:5173`.
+3. Choose **注册账号**, enter the unique registration name, email, password and matching confirmation.
+4. Click **发送验证码**, confirm HTTP 202 in the browser Network panel, and receive the real email. Enter its numeric code and click **验证并注册**; confirm HTTP 201 and the **返回登录** page.
+5. Test a duplicate name/email (409), code rate limit (429), invalid/expired code (400) and delivery failure (503). To test actual login, wait for the separate real login integration; the visible login form is still Mock-only.
+
+Run `npm run check && npm test && npm run build` for frontend code validation.
