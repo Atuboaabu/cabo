@@ -81,3 +81,9 @@ Place this in your deployment-specific `frontend/index.html` before the existing
 5. Test a duplicate name/email (409), code rate limit (429), invalid/expired code (400) and delivery failure (503). To test actual login, wait for the separate real login integration; the visible login form is still Mock-only.
 
 Run `npm run check && npm test && npm run build` for frontend code validation.
+
+## Registration UI: resend cooldown and password confirmation
+
+After `POST /auth/verification-codes` returns the expected HTTP **202**, the frontend disables the `发送验证码` button for **60 seconds** and shows `60秒后重发`, counting down to `1秒后重发`. The button re-enables after the deadline. This cooldown is a presentation safeguard only: FastAPI independently enforces its authoritative rate limit. A failed send or network error does **not** pretend to be a successful send or start a resend cooldown; the operation error is displayed.
+
+The `确认密码` field checks against `密码` **as the user types**. Mismatch feedback is shown immediately after the confirmation input becomes nonempty; it clears automatically when both fields match, and re-evaluates if the original password is edited. Form submission still rejects a mismatch and sends only the password (never the confirmation). The expiry time lives in page memory and survives ordinary frontend rerendering, without localStorage or secret persistence. A full page reload does not replace the backend's rate limit.
