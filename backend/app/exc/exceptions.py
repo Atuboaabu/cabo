@@ -16,3 +16,7 @@ class UserAccountExistedException(Exception):
 
 class UserNameConflictException(Exception):
     pass
+
+class EmailSendFailedException(Exception):
+    def __init__(self, content: str) -> None:
+        self.content = content

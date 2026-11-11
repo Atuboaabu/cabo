@@ -13,6 +13,7 @@ router = APIRouter(
 
 @router.post(
     "/verification-codes",
+    status_code=status.HTTP_202_ACCEPTED
 )
 async def get_verification_code(
     session: SessionDep,

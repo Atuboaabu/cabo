@@ -68,3 +68,16 @@ def register_exception_handlers(app: FastAPI)->None:
                 "detail": "Username is already taken" 
             }
         )
+    
+    @app.exception_handler(exceptions.EmailSendFailedException)
+    async def username_existed_handle(
+        request: Request,
+        exc: exceptions.EmailSendFailedException
+    ):
+        return JSONResponse(
+            status_code = status.HTTP_503_SERVICE_UNAVAILABLE,
+            content = {
+                "code": "EMAIL_SEND_ERROR",
+                "detail": f"Email send failed, content: {exc.content}" 
+            }
+        )
