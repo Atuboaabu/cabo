@@ -14,7 +14,7 @@ router = APIRouter(
 @router.post(
     "/verification-codes",
 )
-def get_verification_code(
+async def get_verification_code(
     session: SessionDep,
     code_request: VerificationCodeRequest
 ):
@@ -28,7 +28,7 @@ def get_verification_code(
 
     assert verify_code is not None
 
-    result = email_sender.send_verification_email(
+    result = await email_sender.send_verification_email(
         display_email,
         verify_code
     )
