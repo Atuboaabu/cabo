@@ -75,3 +75,28 @@
   border-color:#bc8174;
   box-shadow:0 12px 35px #0003,inset 4px 0 #a65244;
 }
+
+/* Confirmation feedback: a clearly recognizable inline warning, in CABO ink. */
+.auth-panel .password-confirmation-status[data-tone="error"]{
+  display:flex;
+  align-items:flex-start;
+  gap:9px;
+  font-weight:700;
+  font-size:14px;
+  border-width:1px;
+  border-left-width:4px;
+  border-left-color:#a65244;
+  box-shadow:0 2px 8px #78352d1c;
+}
+.auth-panel .password-confirmation-status[data-tone="error"]::before{
+  content:"!";
+  flex:none;
+  display:grid;
+  place-items:center;
+  width:20px;
+  height:20px;
+  border-radius:50%;
+  background:#a65244;
+  color:#fff5ea;
+  font:700 13px/1 system-ui,sans-serif;
+}
