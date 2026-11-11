@@ -31,7 +31,7 @@ function authentication(){
  const confirmation=registration?'<label>确认密码<input type="password" name="confirmPassword" required autocomplete="new-password" placeholder="再次输入密码" aria-describedby="password-confirmation-status"></label><p class="hint password-confirmation-status" id="password-confirmation-status" role="status" aria-live="polite"></p>':'';
  const seconds=resendSecondsRemaining(verificationCooldownUntil);
  const code=registration?'<div class="registration-verification"><label for="registration-code">验证码</label><div class="code-row"><input id="registration-code" name="code" inputmode="numeric" pattern="[0-9]+" autocomplete="one-time-code" required placeholder="输入验证码" aria-describedby="registration-code-status"><button type="button" class="outline" data-action="requestRegistrationCode" '+(seconds>0||verificationRequestPending?'disabled':'')+'>'+(seconds>0?seconds+'秒后重发':verificationRequestPending?'发送中…':'发送验证码')+'</button></div><p class="hint form-feedback" id="registration-code-status" role="status" aria-live="polite"></p></div>':'';
- const nickname=registration?'<label>注册名（游戏展示名）<input type="text" name="nickname" required autocomplete="nickname" placeholder="设置全局唯一的注册名"></label>':'';
+ const nickname=registration?'<label>昵称<input type="text" name="nickname" required autocomplete="nickname" placeholder="设置昵称（不可重复）"></label>':'';
  const authLinks=authMode==='login'
   ?[['register','注册账号'],['forgot','忘记密码？']]
   :[['login','返回登录']];
