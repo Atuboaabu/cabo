@@ -95,14 +95,19 @@ def revoke_auth_session(
     session: Session,
     token: str
 )->None:
-    token_digest = generate_token_digest(token)
-    statement = update(AuthSession).values(
-        revoked_at = func.now()
-    ).where(
-        AuthSession.token_digest == token_digest
-    )
-    session.execute(statement)
-    session.commit()
+    try:
+        token_digest = generate_token_digest(token)
+        statement = update(AuthSession).values(
+            revoked_at = func.now()
+        ).where(
+            AuthSession.token_digest == token_digest,
+            AuthSession.revoked_at.is_(None)
+        )
+        session.execute(statement)
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
 
 
     

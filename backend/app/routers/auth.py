@@ -119,7 +119,8 @@ def get_auth_me(
 )
 def logout(
     session: SessionDep,
-    request: Request
+    request: Request,
+    response: Response
 ):
     token = request.cookies.get("session_token")
     if not token:
@@ -128,4 +129,10 @@ def logout(
     auth.revoke_auth_session(
         session,
         token
+    )
+
+    response.delete_cookie(
+        key="session_token",
+        path="/",
+        samesite="lax"
     )
