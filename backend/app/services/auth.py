@@ -41,7 +41,7 @@ def get_authenticated_account(
     auth_session = session.execute(
         select(AuthSession).where(
             AuthSession.token_digest == token_digest,
-            AuthSession.revoked_at == None,
+            AuthSession.revoked_at.is_(None),
             AuthSession.idle_expires_at >= func.now(),
             AuthSession.absolute_expires_at >= func.now()
         )

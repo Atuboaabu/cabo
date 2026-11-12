@@ -16,6 +16,7 @@ class Setting(BaseSettings):
         default=604800,
         gt=0
     )
+    session_cookie_secure: bool = True
 
     model_config = SettingsConfigDict(
         env_file=".env",

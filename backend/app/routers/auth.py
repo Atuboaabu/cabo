@@ -8,6 +8,8 @@ from app.schemas import (UserAccountCreate,
 from app.services import accounts, verification, auth
 from app.normalization import normalize_email
 from app.integrations import email_sender
+from app.exc import exceptions
+from app.config import settings
 
 router = APIRouter(
     prefix="/auth",
@@ -75,9 +77,9 @@ def login(
         key="session_token",
         value=token,
         httponly=True,
-        secure=True,
+        secure=settings.session_cookie_secure,
         samesite="lax",
-        max_age=15 * 24 * 60 * 60,
+        max_age=settings.session_absolute_timeout_seconds,
         path="/"
     )
     
@@ -96,7 +98,10 @@ def get_auth_me(
     session: SessionDep,
     request: Request
 ):
-    token = request.cookies["session_token"]
+    token = request.cookies.get("session_token")
+    if token is None:
+        raise exceptions.InvalidCookieException()
+
     user = auth.get_authenticated_account(
         session,
         token
