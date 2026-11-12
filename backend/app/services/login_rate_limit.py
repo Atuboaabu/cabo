@@ -16,9 +16,21 @@ def check_and_record_login_attempt(
         scope=scope,
         subject=subject
     )
+    if scope == "ip":
+        limit = settings.login_ip_limit
+        window_seconds = settings.login_ip_window_seconds
+    elif scope == "email":
+        limit = settings.login_email_limit
+        window_seconds = settings.login_email_window_seconds
+    else:
+        raise ValueError(f"wrong parameter: scope: {scope}")
 
     try:
-
+        window_exppired = and_(
+            LoginRateLimit.window_started_at + 
+                text(f"INTERVAL '{window_seconds} seconds'") <= func.now(),
+            LoginRateLimit.scope == scope
+        )
         statement = insert(LoginRateLimit).values(
             scope=scope,
             subject_digest=subject_digest,
@@ -28,57 +40,20 @@ def check_and_record_login_attempt(
             index_elements=[LoginRateLimit.scope, LoginRateLimit.subject_digest],
             set_={
                 "attempt_count": case(
-                    (
-                        or_(
-                            and_(
-                                LoginRateLimit.window_started_at + 
-                                    text(f"INTERVAL '{settings.login_ip_window_seconds} seconds'") < func.now(),
-                                LoginRateLimit.scope == "ip"
-                            ),
-                            and_(
-                                LoginRateLimit.window_started_at + 
-                                    text(f"INTERVAL '{settings.login_email_window_seconds} seconds'") < func.now(),
-                                LoginRateLimit.scope == "email"
-                            )
-                        ),
-                        1
-                    ),
-                    (
-                        or_(
-                            and_(
-                                LoginRateLimit.window_started_at + 
-                                    text(f"INTERVAL '{settings.login_ip_window_seconds} seconds'") >= func.now(),
-                                LoginRateLimit.attempt_count < settings.login_ip_limit,
-                                LoginRateLimit.scope == "ip"
-                            ),
-                            and_(
-                                LoginRateLimit.window_started_at + 
-                                    text(f"INTERVAL '{settings.login_email_window_seconds} seconds'") >= func.now(),
-                                LoginRateLimit.attempt_count < settings.login_email_limit,
-                                LoginRateLimit.scope == "email"
-                            )
-                        ),
-                        LoginRateLimit.attempt_count + 1
-                    ),
+                    (window_exppired, 1),
+                    else_= LoginRateLimit.attempt_count + 1
                 ),
                 "window_started_at": case(
-                    (
-                        or_(
-                            and_(
-                                LoginRateLimit.window_started_at + 
-                                    text(f"INTERVAL '{settings.login_ip_window_seconds} seconds'") < func.now(),
-                                LoginRateLimit.scope == "ip"
-                            ),
-                            and_(
-                                LoginRateLimit.window_started_at + 
-                                    text(f"INTERVAL '{settings.login_email_window_seconds} seconds'") < func.now(),
-                                LoginRateLimit.scope == "email"
-                            )
-                        ),
-                        func.now()
-                    )
+                    (window_exppired, func.now()),
+                    else_=LoginRateLimit.window_started_at
                 )
-            }
+            },
+            where=(
+                or_(
+                    window_exppired,
+                    LoginRateLimit.attempt_count < limit
+                )
+            )
         ).returning(
             LoginRateLimit.id
         )
