@@ -17,6 +17,10 @@ class Setting(BaseSettings):
         gt=0
     )
     session_cookie_secure: bool = True
+    allowed_origins: list[str] = [
+        "http://localhost:5173",
+        "http://localhost:8000",
+    ]
 
     model_config = SettingsConfigDict(
         env_file=".env",

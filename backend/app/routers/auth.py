@@ -1,6 +1,7 @@
 from fastapi import APIRouter, status, Response, Request
 
 from app.depencicies.session import SessionDep
+from app.depencicies.origin import OriginCheckDep
 from app.schemas import (UserAccountCreate,
                          UserAccountResponse,
                          VerificationCodeRequest,
@@ -56,7 +57,8 @@ def register_useraccount(
 @router.post(
     "/login",
     response_model=UserAccountResponse,
-    status_code=status.HTTP_200_OK
+    status_code=status.HTTP_200_OK,
+    dependencies=[OriginCheckDep]
 )
 def login(
     session: SessionDep,
@@ -115,7 +117,8 @@ def get_auth_me(
 
 @router.post(
     "/logout",
-    status_code=status.HTTP_204_NO_CONTENT
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[OriginCheckDep]
 )
 def logout(
     session: SessionDep,
@@ -139,7 +142,8 @@ def logout(
 
 @router.post(
     "/refresh",
-    status_code=status.HTTP_204_NO_CONTENT
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[OriginCheckDep]
 )
 def refresh_session(
     session: SessionDep,
