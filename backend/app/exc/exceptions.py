@@ -26,3 +26,6 @@ class VerificationCodeRateLimitException(Exception):
 
 class InvalidCredentialsException(Exception):
     pass
+
+class InvalidCookieException(Exception):
+    pass

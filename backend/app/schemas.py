@@ -26,6 +26,10 @@ class UserAccountResponse(BaseModel):
     email: str
     created_at: datetime
 
+class UserAccountLogin(BaseModel):
+    email: EmailStr
+    password: str
+
 class VerificationCodeRequest(BaseModel):
     email_address: EmailStr
     purpose: Literal["registration"]

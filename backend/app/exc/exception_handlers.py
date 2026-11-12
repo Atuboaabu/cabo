@@ -107,3 +107,16 @@ def register_exception_handlers(app: FastAPI)->None:
                 "detail": "Invalid email or password, Please check" 
             }
         )
+    
+    @app.exception_handler(exceptions.InvalidCookieException)
+    async def invalid_cookie_handle(
+        request: Request,
+        exc: exceptions.InvalidCookieException
+    ):
+        return JSONResponse(
+            status_code = status.HTTP_401_UNAUTHORIZED,
+            content = {
+                "code": "INVALID_COOKIE",
+                "detail": "Cookie is invalid or has expired email, Please log in again" 
+            }
+        )

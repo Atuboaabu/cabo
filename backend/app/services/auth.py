@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
 
@@ -6,7 +6,7 @@ from app.models import UserAccount, AuthSession
 from app.normalization import normalize_email
 from app.exc import exceptions
 from app.security.password import verify_password, hash_password
-from app.security.session_token import generate_session_token
+from app.security.session_token import generate_session_token, generate_token_digest
 from app.config import settings
 
 DUMMY_HASHED_PASSWORD = hash_password("dummy-password")
@@ -29,6 +29,35 @@ def authenticate_account(
     
     if not verify_password(password, user_account.hashed_password):
         raise exceptions.InvalidCredentialsException()
+
+    return user_account
+
+def get_authenticated_account(
+    session: Session,
+    token: str
+)->UserAccount:
+    token_digest = generate_token_digest(token)
+
+    auth_session = session.execute(
+        select(AuthSession).where(
+            AuthSession.token_digest == token_digest,
+            AuthSession.revoked_at == None,
+            AuthSession.idle_expires_at >= func.now(),
+            AuthSession.absolute_expires_at >= func.now()
+        )
+    ).scalar_one_or_none()
+
+    if auth_session is None:
+        raise exceptions.InvalidCookieException()
+
+    user_account = session.execute(
+        select(UserAccount).where(
+            UserAccount.id == auth_session.account_id
+        )
+    ).scalar_one_or_none()
+
+    if user_account is None:
+        raise exceptions.InvalidCookieException()
 
     return user_account
 
