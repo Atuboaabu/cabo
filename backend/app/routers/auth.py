@@ -99,7 +99,7 @@ def get_auth_me(
     request: Request
 ):
     token = request.cookies.get("session_token")
-    if token is None:
+    if not token:
         raise exceptions.InvalidCookieException()
 
     user = auth.get_authenticated_account(
@@ -111,4 +111,21 @@ def get_auth_me(
         username = user.username,
         email = user.email,
         created_at = user.created_at
+    )
+
+@router.post(
+    "/logout",
+    status_code=status.HTTP_204_NO_CONTENT
+)
+def logout(
+    session: SessionDep,
+    request: Request
+):
+    token = request.cookies.get("session_token")
+    if not token:
+        raise exceptions.InvalidCookieException()
+
+    auth.revoke_auth_session(
+        session,
+        token
     )

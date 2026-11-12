@@ -1,4 +1,4 @@
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
 
@@ -42,8 +42,8 @@ def get_authenticated_account(
         select(AuthSession).where(
             AuthSession.token_digest == token_digest,
             AuthSession.revoked_at.is_(None),
-            AuthSession.idle_expires_at >= func.now(),
-            AuthSession.absolute_expires_at >= func.now()
+            AuthSession.idle_expires_at > func.now(),
+            AuthSession.absolute_expires_at > func.now()
         )
     ).scalar_one_or_none()
 
@@ -89,5 +89,20 @@ def create_auth_session(
         return token
     except Exception:
         session.rollback()
-        raise 
+        raise
+
+def revoke_auth_session(
+    session: Session,
+    token: str
+)->None:
+    token_digest = generate_token_digest(token)
+    statement = update(AuthSession).values(
+        revoked_at = func.now()
+    ).where(
+        AuthSession.token_digest == token_digest
+    )
+    session.execute(statement)
+    session.commit()
+
+
     
