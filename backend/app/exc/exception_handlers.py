@@ -101,7 +101,7 @@ def register_exception_handlers(app: FastAPI)->None:
         exc: exceptions.InvalidCredentialsException
     ):
         return JSONResponse(
-            status_code = status.HTTP_404_NOT_FOUND,
+            status_code = status.HTTP_401_UNAUTHORIZED,
             content = {
                 "code": "INVALID_CREDENTIALS",
                 "detail": "Invalid email or password, Please check" 
