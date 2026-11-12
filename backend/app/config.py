@@ -27,4 +27,26 @@ class Setting(BaseSettings):
         env_file_encoding="utf-8"
     )
 
+    login_ip_limit: int = Field(
+        default=10,
+        gt=0
+    )
+
+    login_ip_window_seconds: int = Field(
+        default=60,
+        gt=0
+    )
+
+    login_email_limit: int = Field(
+        default=10,
+        gt=0
+    )
+
+    login_email_window_seconds: int = Field(
+        default=300,
+        gt=0
+    )
+
+    rate_limit_hmac_key: bytes
+
 settings = Setting()

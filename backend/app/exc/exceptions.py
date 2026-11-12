@@ -29,3 +29,6 @@ class InvalidCredentialsException(Exception):
 
 class InvalidCookieException(Exception):
     pass
+
+class LoginRateLimitException(Exception):
+    pass

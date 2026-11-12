@@ -120,3 +120,16 @@ def register_exception_handlers(app: FastAPI)->None:
                 "detail": "Cookie is invalid or has expired email, Please log in again" 
             }
         )
+
+    @app.exception_handler(exceptions.LoginRateLimitException)
+    async def login_rate_limit_handle(
+        request: Request,
+        exc: exceptions.LoginRateLimitException
+    ):
+        return JSONResponse(
+            status_code = status.HTTP_429_TOO_MANY_REQUESTS,
+            content = {
+                "code": "TOO_MANY_REQUESTS",
+                "detail": "Too many requests" 
+            }
+        )
