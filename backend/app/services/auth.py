@@ -1,4 +1,4 @@
-from sqlalchemy import select, func, update
+from sqlalchemy import select, func, update, text
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
 
@@ -109,5 +109,32 @@ def revoke_auth_session(
         session.rollback()
         raise
 
+def refresh_auth_session(
+    session: Session,
+    token: str
+)->None:
+    try:
+        token_digest = generate_token_digest(token)
+        statement = update(AuthSession).values(
+            last_activity_at = func.now(),
+            idle_expires_at = func.min(
+                func.now() + text(f"INTERVAL '{settings.session_idle_timeout_seconds} seconds'"),
+                AuthSession.absolute_expires_at
+            )
+        ).where(
+            AuthSession.token_digest == token_digest,
+            AuthSession.revoked_at.is_(None),
+            AuthSession.idle_expires_at > func.now(),
+            AuthSession.absolute_expires_at > func.now()
+        ).returning(
+            AuthSession.id
+        )
+        auth_session_id = session.execute(statement)
+        if auth_session_id is None:
+            raise exceptions.InvalidCookieException()
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
 
     

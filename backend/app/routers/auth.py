@@ -136,3 +136,20 @@ def logout(
         path="/",
         samesite="lax"
     )
+
+@router.post(
+    "/refresh",
+    status_code=status.HTTP_204_NO_CONTENT
+)
+def refresh_session(
+    session: SessionDep,
+    request: Request
+):
+    token = request.cookies.get("session_token")
+    if not token:
+        raise exceptions.InvalidCookieException()
+
+    auth.refresh_auth_session(
+        session,
+        token
+    )
