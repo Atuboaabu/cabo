@@ -1,4 +1,4 @@
-from sqlalchemy import func, text, and_, or_
+from sqlalchemy import func, text, and_, or_, case
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert
 
@@ -27,45 +27,58 @@ def check_and_record_login_attempt(
         ).on_conflict_do_update(
             index_elements=[LoginRateLimit.scope, LoginRateLimit.subject_digest],
             set_={
-                "attempt_count": LoginRateLimit.attempt_count + 1,
-            },
-            where=(
-                or_(
-                    and_(
-                        LoginRateLimit.window_started_at + 
-                            text(f"INTERVAL '{settings.login_ip_window_seconds} seconds'") < func.now(),
-                        LoginRateLimit.attempt_count < settings.login_ip_limit,
-                        LoginRateLimit.scope == "ip"
+                "attempt_count": case(
+                    (
+                        or_(
+                            and_(
+                                LoginRateLimit.window_started_at + 
+                                    text(f"INTERVAL '{settings.login_ip_window_seconds} seconds'") < func.now(),
+                                LoginRateLimit.scope == "ip"
+                            ),
+                            and_(
+                                LoginRateLimit.window_started_at + 
+                                    text(f"INTERVAL '{settings.login_email_window_seconds} seconds'") < func.now(),
+                                LoginRateLimit.scope == "email"
+                            )
+                        ),
+                        1
                     ),
-                    and_(
-                        LoginRateLimit.window_started_at + 
-                            text(f"INTERVAL '{settings.login_email_window_seconds} seconds'") < func.now(),
-                        LoginRateLimit.attempt_count < settings.login_email_limit,
-                        LoginRateLimit.scope == "email"
+                    (
+                        or_(
+                            and_(
+                                LoginRateLimit.window_started_at + 
+                                    text(f"INTERVAL '{settings.login_ip_window_seconds} seconds'") >= func.now(),
+                                LoginRateLimit.attempt_count < settings.login_ip_limit,
+                                LoginRateLimit.scope == "ip"
+                            ),
+                            and_(
+                                LoginRateLimit.window_started_at + 
+                                    text(f"INTERVAL '{settings.login_email_window_seconds} seconds'") >= func.now(),
+                                LoginRateLimit.attempt_count < settings.login_email_limit,
+                                LoginRateLimit.scope == "email"
+                            )
+                        ),
+                        LoginRateLimit.attempt_count + 1
+                    ),
+                ),
+                "window_started_at": case(
+                    (
+                        or_(
+                            and_(
+                                LoginRateLimit.window_started_at + 
+                                    text(f"INTERVAL '{settings.login_ip_window_seconds} seconds'") < func.now(),
+                                LoginRateLimit.scope == "ip"
+                            ),
+                            and_(
+                                LoginRateLimit.window_started_at + 
+                                    text(f"INTERVAL '{settings.login_email_window_seconds} seconds'") < func.now(),
+                                LoginRateLimit.scope == "email"
+                            )
+                        ),
+                        func.now()
                     )
                 )
-                
-            )
-        ).on_conflict_do_update(
-            index_elements=[LoginRateLimit.scope, LoginRateLimit.subject_digest],
-            set_={
-                "attempt_count": 1,
-                "window_started_at": func.now()
-            },
-            where=(
-                or_(
-                    and_(
-                        LoginRateLimit.window_started_at + 
-                            text(f"INTERVAL '{settings.login_ip_window_seconds} seconds'") >= func.now(),
-                        LoginRateLimit.scope == "ip"
-                    ),
-                    and_(
-                        LoginRateLimit.window_started_at + 
-                            text(f"INTERVAL '{settings.login_email_window_seconds} seconds'") >= func.now(),
-                        LoginRateLimit.scope == "email"
-                    )
-                )
-            )
+            }
         ).returning(
             LoginRateLimit.id
         )
@@ -75,7 +88,7 @@ def check_and_record_login_attempt(
         ).scalar_one_or_none()
     
         if login_ratelimit_id is None:
-            exceptions.LoginRateLimitException()
+            raise exceptions.LoginRateLimitException()
 
         session.commit()
     except Exception:
