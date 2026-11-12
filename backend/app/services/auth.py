@@ -117,7 +117,7 @@ def refresh_auth_session(
         token_digest = generate_token_digest(token)
         statement = update(AuthSession).values(
             last_activity_at = func.now(),
-            idle_expires_at = func.min(
+            idle_expires_at = func.least(
                 func.now() + text(f"INTERVAL '{settings.session_idle_timeout_seconds} seconds'"),
                 AuthSession.absolute_expires_at
             )
@@ -129,7 +129,7 @@ def refresh_auth_session(
         ).returning(
             AuthSession.id
         )
-        auth_session_id = session.execute(statement)
+        auth_session_id = session.execute(statement).scalar_one_or_none()
         if auth_session_id is None:
             raise exceptions.InvalidCookieException()
         session.commit()
