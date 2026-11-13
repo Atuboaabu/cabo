@@ -147,15 +147,15 @@ def register_exception_handlers(app: FastAPI)->None:
             }
         )
     
-    @app.exception_handler(exceptions.RoomCodeConfilictException)
+    @app.exception_handler(exceptions.RoomCodeAllocationFailedException)
     async def account_already_in_room_handle(
         request: Request,
-        exc: exceptions.RoomCodeConfilictException
+        exc: exceptions.RoomCodeAllocationFailedException
     ):
         return JSONResponse(
-            status_code = status.HTTP_409_CONFLICT,
+            status_code = status.HTTP_503_SERVICE_UNAVAILABLE,
             content = {
-                "code": "ROOM_CODE_CONFILICT",
-                "detail": "Room code confilict, please retry" 
+                "code": "ROOM_CODE_ALLOCATION_FAILED",
+                "detail": "Unable to allocate room code" 
             }
         )

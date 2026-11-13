@@ -36,5 +36,5 @@ class LoginRateLimitException(Exception):
 class AccountAlreadyInRoomException(Exception):
     pass
 
-class RoomCodeConfilictException(Exception):
+class RoomCodeAllocationFailedException(Exception):
     pass

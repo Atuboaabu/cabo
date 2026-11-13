@@ -1,7 +1,6 @@
 from fastapi import APIRouter, status, Response, Request
 
-from app.depencicies.session import SessionDep
-from app.depencicies.origin import OriginCheckDep
+from app.depencicies import SessionDep, OriginCheckDep
 from app.schemas import (UserAccountCreate,
                          UserAccountResponse,
                          VerificationCodeRequest,
