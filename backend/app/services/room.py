@@ -1,4 +1,5 @@
 import secrets
+from uuid import UUID
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
@@ -125,6 +126,46 @@ def join_room(
             if constraint_name == "uq_room_members_active_account":
                 raise exceptions.AccountAlreadyInRoomException() from exc
         raise
+    except Exception:
+        session.rollback()
+        raise
+
+def set_room_member_ready(
+    session: Session,
+    user_account: UserAccount,
+    room_id: UUID,
+    ready: bool = True,
+)->RoomMember:
+    room = session.execute(
+        select(Room).where(
+            Room.id == room_id
+        ).with_for_update()
+    ).scalar_one_or_none()
+
+    if room is None:
+        raise exceptions.RoomNotExistException()
+        
+    if room.state != "Lobby":
+        raise exceptions.RoomStateNotLobbyException()
+    
+    if user_account.id == room.host_account_id:
+        raise exceptions.InvalidRequestException()
+    try:
+        room_member = session.execute(
+            select(RoomMember).where(
+                RoomMember.room_id == room.id,
+                RoomMember.account_id == user_account.id,
+                RoomMember.left_at.is_(None)
+            )
+        ).scalar_one_or_none()
+
+        if room_member is None:
+            raise exceptions.RequesterWrongException()
+        
+        room_member.is_ready = True
+        session.commit()
+        session.refresh(room_member)
+        return room_member
     except Exception:
         session.rollback()
         raise

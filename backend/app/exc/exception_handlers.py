@@ -198,3 +198,29 @@ def register_exception_handlers(app: FastAPI)->None:
                 "detail": "The room has already been fulled" 
             }
         )
+    
+    @app.exception_handler(exceptions.RequesterWrongException)
+    async def requester_wrong_handle(
+        request: Request,
+        exc: exceptions.RequesterWrongException
+    ):
+        return JSONResponse(
+            status_code = status.HTTP_403_FORBIDDEN,
+            content = {
+                "code": "REQUESTER_WRONG",
+                "detail": "The requester wrong" 
+            }
+        )
+    
+    @app.exception_handler(exceptions.InvalidRequestException)
+    async def invalid_request_handle(
+        request: Request,
+        exc: exceptions.InvalidRequestException
+    ):
+        return JSONResponse(
+            status_code = status.HTTP_403_FORBIDDEN,
+            content = {
+                "code": "INVALID_REQUEST",
+                "detail": "The request is invalid" 
+            }
+        )

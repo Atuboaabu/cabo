@@ -47,3 +47,9 @@ class RoomStateNotLobbyException(Exception):
 
 class RoomIsFullException(Exception):
     pass
+
+class RequesterWrongException(Exception):
+    pass
+
+class InvalidRequestException(Exception):
+    pass
