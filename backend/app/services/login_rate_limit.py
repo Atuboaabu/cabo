@@ -1,8 +1,8 @@
-from sqlalchemy import func, text, and_, or_, case
+from sqlalchemy import func, or_, case
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert
 
-from app.security.login_rate_limit import hash_rate_limit_subject, compare_rate_limit_subject
+from app.security.login_rate_limit import hash_rate_limit_subject
 from app.models import LoginRateLimit
 from app.config import settings
 from app.exc import exceptions
@@ -26,7 +26,7 @@ def check_and_record_login_attempt(
         raise ValueError(f"wrong parameter: scope: {scope}")
 
     window_exppired = (LoginRateLimit.window_started_at + 
-            func.make_interval(seconds=window_seconds) <= func.now())
+            func.make_interval(0, 0, 0, 0, 0, 0, window_seconds) <= func.now())
     statement = insert(LoginRateLimit).values(
         scope=scope,
         subject_digest=subject_digest,
@@ -60,7 +60,6 @@ def check_and_record_login_attempt(
 
     if login_ratelimit_id is None:
         raise exceptions.LoginRateLimitException()
-    session.flush()
 
 def check_login_ratelimit(
     session: Session,

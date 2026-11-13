@@ -66,9 +66,10 @@ def login(
     request: Request,
     response: Response
 ):
+    _, normalized_email = normalize_email(login_info.email)
     ratelimit_info = [
         ("ip", request.client.host),
-        ("email", login_info.email)
+        ("email", normalized_email)
     ]
     login_rate_limit.check_login_ratelimit(
         session,
