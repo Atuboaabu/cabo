@@ -53,12 +53,15 @@ const server = createServer(async (req, res) => {
     if (allowedMethod === 'POST') {
       headers['Content-Type'] = 'application/json';
       const chunks=[];
-      let size=0;
+      let size=0, oversized=false;
       for await (const part of req) {
         size+=part.length;
-        if (size>65536) { fail(res,413,'Request too large');return; }
+        // Bound buffered memory; drain the incoming stream before replying
+        // so a 413 response is delivered without tearing down the socket.
+        if(size>65536){oversized=true;continue;}
         chunks.push(part);
       }
+      if(oversized){fail(res,413,'Request too large');return;}
       body=Buffer.concat(chunks);
     }
     try {
