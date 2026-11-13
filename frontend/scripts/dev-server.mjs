@@ -1,7 +1,7 @@
 /**
  * CABO frontend-only development server.
- * Serves files on :5173 and proxies only the two registration POST routes to
- * FastAPI (:8000 by default), avoiding cross-origin browser restrictions.
+ * Serves files on :5173 and proxies only explicitly allowed auth routes to
+ * FastAPI (:8000 by default). Cookie headers are relayed without parsing.
  * Never prints request bodies, passwords or verification codes.
  */
 import { createServer } from 'node:http';
@@ -16,7 +16,15 @@ if (!['http:', 'https:'].includes(backend.protocol) || backend.username || backe
     backend.search || backend.hash || backend.pathname !== '/') {
   throw Error('CABO_BACKEND_URL must be an http(s) origin without credentials');
 }
-const routes = new Set(['/auth/verification-codes', '/auth/register']);
+// Explicit route/method allowlist; not a general reverse proxy.
+const routes = new Map([
+  ['/auth/verification-codes', 'POST'],
+  ['/auth/register', 'POST'],
+  ['/auth/login', 'POST'],
+  ['/auth/me', 'GET'],
+  ['/auth/logout', 'POST'],
+  ['/auth/refresh', 'POST']
+]);
 const mime = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -34,32 +42,50 @@ const server = createServer(async (req, res) => {
   try { path = new URL(req.url, 'http://localhost').pathname; }
   catch { fail(res, 400, 'Invalid path'); return; }
   if (routes.has(path)) {
-    if (req.method !== 'POST') { fail(res, 405, 'POST required'); return; }
-    const chunks=[];
-    let size=0;
-    for await (const part of req) {
-      size+=part.length;
-      if (size>65536) { fail(res,413,'Request too large');return; }
-      chunks.push(part);
+    const allowedMethod=routes.get(path);
+    if (req.method !== allowedMethod) { fail(res, 405, allowedMethod+' required'); return; }
+    const headers = { Accept: 'application/json' };
+    if (req.headers.cookie) headers.Cookie = req.headers.cookie;
+    // Pass through the real browser Origin for state-changing requests.
+    // Missing Origin is intentionally left missing for backend validation.
+    if (allowedMethod === 'POST' && req.headers.origin) headers.Origin = req.headers.origin;
+    let body;
+    if (allowedMethod === 'POST') {
+      headers['Content-Type'] = 'application/json';
+      const chunks=[];
+      let size=0, oversized=false;
+      for await (const part of req) {
+        size+=part.length;
+        // Bound buffered memory; drain the incoming stream before replying
+        // so a 413 response is delivered without tearing down the socket.
+        if(size>65536){oversized=true;continue;}
+        chunks.push(part);
+      }
+      if(oversized){fail(res,413,'Request too large');return;}
+      body=Buffer.concat(chunks);
     }
     try {
-      const target = new URL(path, backend);
-      const upstream = await fetch(target, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: Buffer.concat(chunks),
-        redirect: 'manual',
-        signal: AbortSignal.timeout(15000)
+      const upstream=await fetch(new URL(path,backend),{
+        method:allowedMethod,
+        headers,
+        ...(body===undefined?{}:{body}),
+        redirect:'manual',
+        signal:AbortSignal.timeout(15000)
       });
-      const payload=Buffer.from(await upstream.arrayBuffer());
-      res.writeHead(upstream.status,{
+      const responseHeaders={
         ...noStore,
-        'Content-Type': upstream.headers.get('content-type') || 'application/json'
-      });
-      res.end(payload);
-    } catch {
-      // No backend exception details are exposed or logged.
-      fail(res,503,'FastAPI registration service unavailable');
+        'Content-Type':upstream.headers.get('content-type')||'application/json'
+      };
+      // Headers.get('set-cookie') can join independent cookies incorrectly.
+      // Node >= 20 exposes each cookie separately via getSetCookie().
+      const cookies=upstream.headers.getSetCookie();
+      if(cookies.length)responseHeaders['Set-Cookie']=cookies;
+      const payload=Buffer.from(await upstream.arrayBuffer());
+      res.writeHead(upstream.status,responseHeaders);
+      res.end(upstream.status===204?undefined:payload);
+    }catch{
+      // Never log request/response headers, bodies or session credentials.
+      fail(res,503,'FastAPI auth service unavailable');
     }
     return;
   }
@@ -84,4 +110,4 @@ const server = createServer(async (req, res) => {
     res.end(req.method==='HEAD'?undefined:bytes);
   } catch { fail(res,404,'Not found'); }
 });
-server.listen(port, '127.0.0.1',()=>console.info(`CABO frontend: http://localhost:${port} (registration proxy -> ${backend.origin})`));
+server.listen(port, '127.0.0.1',()=>console.info(`CABO frontend: http://localhost:${port} (auth proxy -> ${backend.origin})`));
