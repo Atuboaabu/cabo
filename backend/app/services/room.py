@@ -39,7 +39,7 @@ def create_room(
             if room_id is not None:
                 break
         if room_id is None:
-            raise exceptions.RoomCodeConfilictException()
+            raise exceptions.RoomCodeAllocationFailedException()
 
         now = datetime.now(timezone.utc)
         room_member = RoomMember(

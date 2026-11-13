@@ -1,13 +1,13 @@
-from sqlalchemy.orm import Session
 from fastapi import Request, Depends
 from typing import Annotated
 
 from app.models import UserAccount
 from app.services import auth
 from app.exc import exceptions
+from app.depencicies import SessionDep
 
 def get_active_useraccount(
-    session: Session,
+    session: SessionDep,
     request: Request
 )->UserAccount:
     token = request.cookies.get("session_token")

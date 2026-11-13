@@ -148,7 +148,7 @@ def register_exception_handlers(app: FastAPI)->None:
         )
     
     @app.exception_handler(exceptions.RoomCodeAllocationFailedException)
-    async def account_already_in_room_handle(
+    async def room_code_allocation_failed_handle(
         request: Request,
         exc: exceptions.RoomCodeAllocationFailedException
     ):
