@@ -62,7 +62,7 @@ By default, a static production build sends requests to `http://localhost:8000`.
 <script type="module" src="/src/app.js"></script>
 ```
 
-Place this in your deployment-specific `frontend/index.html` before the existing module script, or set it using your deployment HTML configuration. The dev proxy target can be changed via `CABO_BACKEND_URL=https://your-api-host npm run dev`, and its local port via `PORT=5173`. The dev proxy only forwards POST `/auth/verification-codes` and POST `/auth/register`, never other authenticated/session routes. Only an http(s) **origin** is supported (no API suffix, credentials, query or fragment). This configuration is not a credential or session field. If a **static deployed frontend** connects directly to a different host/port, **FastAPI must permit the browser origin via CORS**; this PR does not alter backend CORS policy. The localhost dev proxy avoids that requirement during local registration development. A remotely hosted frontend cannot reach the visitor's localhost unless FastAPI is running on that visitor's machine.
+Place this in your deployment-specific `frontend/index.html` before the existing module script, or set it using your deployment HTML configuration. The dev proxy target can be changed via `CABO_BACKEND_URL=https://your-api-host npm run dev`, and its local port via `PORT=5173`. The dev proxy forwards only the explicit allowlist documented under **Real email/password login and HttpOnly Cookie Sessions**; it is not a generic reverse proxy. Only an http(s) **origin** is supported (no API suffix, credentials, query or fragment). This configuration is not a credential or session field. If a **static deployed frontend** connects directly to a different host/port, **FastAPI must permit the browser origin via CORS**; this PR does not alter backend CORS policy. The localhost dev proxy avoids that requirement during local registration development. A remotely hosted frontend cannot reach the visitor's localhost unless FastAPI is running on that visitor's machine.
 
 ### Endpoints
 
@@ -70,7 +70,7 @@ Place this in your deployment-specific `frontend/index.html` before the existing
 - **Register**: `POST /auth/register` with `{"username":"Alice","email":"alice@example.com","password":"...","verification_code":"012345"}`; only HTTP **201** with the public Account fields is accepted.
 - Existing UI `nickname → username` and `code → verification_code` mapping is kept inside `src/auth-api.js`. Password confirmation is checked in UI but **not transmitted**.
 - The Auth client maps backend codes `USERNAME_TAKEN`, `EMAIL_ALREADY_REGISTERED`, `VERIFICATION_CODE_RATE_LIMIT`, `EMAIL_SEND_ERROR`, `INVALID_VERIFICATION_CODE`, `INVALID_USERNAME` and `INVALID_EMAIL_ADDRESS` to readable messages, with fallback HTTP 400/409/422/429/5xx handling. No raw backend error detail, password, or verification code is logged or persisted.
-- A 201 response renders a separate success state and a **返回登录** action. Real login and session handling remain unimplemented by design; the separate Mock demo entry continues to function.
+- A 201 response renders a separate success state and a **返回登录** action. Real login and Cookie Session restoration are now implemented independently; the separate Mock demo entry continues to function.
 
 ### Local integration
 
@@ -78,7 +78,7 @@ Place this in your deployment-specific `frontend/index.html` before the existing
 2. In `frontend/` run `npm run dev`, then open `http://localhost:5173`.
 3. Choose **注册账号**, enter the unique registration name, email, password and matching confirmation.
 4. Click **发送验证码**, confirm HTTP 202 in the browser Network panel, and receive the real email. Enter its numeric code and click **验证并注册**; confirm HTTP 201 and the **返回登录** page.
-5. Test a duplicate name/email (409), code rate limit (429), invalid/expired code (400) and delivery failure (503). To test actual login, wait for the separate real login integration; the visible login form is still Mock-only.
+5. Test a duplicate name/email (409), code rate limit (429), invalid/expired code (400) and delivery failure (503). Then test the real login and Cookie Session restoration described below.
 
 Run `npm run check && npm test && npm run build` for frontend code validation.
 
