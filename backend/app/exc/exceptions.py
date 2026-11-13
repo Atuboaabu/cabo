@@ -32,3 +32,9 @@ class InvalidCookieException(Exception):
 
 class LoginRateLimitException(Exception):
     pass
+
+class AccountAlreadyInRoomException(Exception):
+    pass
+
+class RoomCodeConfilictException(Exception):
+    pass

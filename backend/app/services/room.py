@@ -1,29 +1,42 @@
 from sqlalchemy.orm import Session
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timezone
 
 from app.models import UserAccount, Room, RoomMember
 from app.security.verification import generate_code
+from app.exc import exceptions
 
 def create_room(
     session: Session,
     user_account: UserAccount
 )-> Room:
-    
-    room_code = generate_code(8)
-    now = datetime.now(timezone.utc)
     try:
-        room = Room(
-            room_code = room_code,
-            host_account_id = user_account.id,
-            state = "Lobby",
-        )
-        session.add(room)
-        session.flush()
+        for _  in range(5):
+            room_code = generate_code(8)
+            statement = (
+                insert(Room).values(
+                    room_code = room_code,
+                    host_account_id = user_account.id,
+                    state = "Lobby",
+                ).on_conflict_do_nothing(
+                    index_elements=[Room.room_code],
+                ).returning(
+                    Room.id
+                )
+            )
+            room_id = session.execute(
+                statement
+            ).scalar_one_or_none()
+            if room_code is not None:
+                break
+        if room_id is None:
+            session.rollback()
+            raise exceptions.RoomCodeConfilictException()
 
-        assert room.id is not None
-
+        now = datetime.now(timezone.utc)
         room_member = RoomMember(
-            room_id = room.id,
+            room_id = room_id,
             account_id = user_account.id,
             seat_index = 0,
             is_ready = False,
@@ -32,7 +45,19 @@ def create_room(
         session.add(room_member)
         session.flush()
         session.commit()
+
+        room = session.get(Room, room_id)
+        assert room is not None
+
         return room
+    except IntegrityError as exc:
+        session.rollback()
+        if getattr(exc.orig, "sqlstate", None) == "23505":
+            constraint_name = exc.orig.diag.constraint_name
+
+            if constraint_name == "uq_room_members_active_account":
+                raise exceptions.RoomCodeConfilictException() from exc
+        raise
     except Exception:
         session.rollback()
         raise

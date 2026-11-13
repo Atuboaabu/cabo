@@ -133,3 +133,29 @@ def register_exception_handlers(app: FastAPI)->None:
                 "detail": "Too many requests" 
             }
         )
+    
+    @app.exception_handler(exceptions.AccountAlreadyInRoomException)
+    async def account_already_in_room_handle(
+        request: Request,
+        exc: exceptions.AccountAlreadyInRoomException
+    ):
+        return JSONResponse(
+            status_code = status.HTTP_409_CONFLICT,
+            content = {
+                "code": "ACCOUNT_ALREADY_INROOM",
+                "detail": "The account already in room" 
+            }
+        )
+    
+    @app.exception_handler(exceptions.RoomCodeConfilictException)
+    async def account_already_in_room_handle(
+        request: Request,
+        exc: exceptions.RoomCodeConfilictException
+    ):
+        return JSONResponse(
+            status_code = status.HTTP_409_CONFLICT,
+            content = {
+                "code": "ROOM_CODE_CONFILICT",
+                "detail": "Room code confilict, please retry" 
+            }
+        )
