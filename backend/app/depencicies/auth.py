@@ -4,7 +4,7 @@ from typing import Annotated
 from app.models import UserAccount
 from app.services import auth
 from app.exc import exceptions
-from app.depencicies import SessionDep
+from app.depencicies.session import SessionDep
 
 def get_active_useraccount(
     session: SessionDep,
