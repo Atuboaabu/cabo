@@ -43,11 +43,14 @@ const ERROR_MESSAGES = {
 };
 
 function messageFor(status, code, operation) {
-  if (status === 403 && ['login','me','logout'].includes(operation)) return '请求来源不被允许，请检查访问地址。';
+  const sessionOperation=['login','me','logout'].includes(operation);
+  if (sessionOperation && status >= 500) return '认证服务暂不可用，请稍后再试。';
+  if (sessionOperation && status === 403) return '请求来源不被允许，请检查访问地址。';
+  if (sessionOperation && status === 429) return '登录尝试过于频繁，请稍后再试。';
+  if (sessionOperation && status === 401) return operation === 'login'
+    ? '邮箱或密码错误，请重新输入。' : '会话已失效，请重新登录。';
   if (Object.hasOwn(ERROR_MESSAGES, code)) return ERROR_MESSAGES[code];
   if (status === 401) return operation === 'login' ? '邮箱或密码错误，请重新输入。' : '会话已失效，请重新登录。';
-  if (status === 429 && operation === 'login') return '登录尝试过于频繁，请稍后再试。';
-  if (status >= 500 && ['login','me','logout'].includes(operation)) return '认证服务暂不可用，请稍后再试。';
   if (status === 409) return '注册信息已被使用，请更换注册名或邮箱。';
   if (status === 429) return '操作过于频繁，请稍后再试。';
   if (status === 422 || status === 400) return operation === 'register'
