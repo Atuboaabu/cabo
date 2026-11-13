@@ -1,5 +1,5 @@
 from fastapi import APIRouter, status
-from app.schemas import RoomResponse
+from app.schemas import RoomResponse, RoomJoinRequest
 
 from app.depencicies import SessionDep, ActiveUserDep, OriginCheckDep
 from app.services import room
@@ -41,12 +41,12 @@ def create_room(
 def join_room(
     session: SessionDep,
     user: ActiveUserDep,
-    room_code: str
+    join_request: RoomJoinRequest
 ):
     room_info = room.join_room(
         session,
         user,
-        room_code
+        join_request.room_code
     )
     assert room_info is not None
 

@@ -6,9 +6,8 @@ from sqlalchemy import select, func
 from datetime import datetime, timezone
 
 from app.models import UserAccount, Room, RoomMember
+from app.schemas import ROOM_CODE_ALPHABET
 from app.exc import exceptions
-
-ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
 def generate_room_code() -> str:
     return "".join(
