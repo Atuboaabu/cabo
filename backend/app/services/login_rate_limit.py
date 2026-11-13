@@ -25,7 +25,7 @@ def check_and_record_login_attempt(
     else:
         raise ValueError(f"wrong parameter: scope: {scope}")
 
-    window_exppired = (LoginRateLimit.window_started_at + 
+    window_expired = (LoginRateLimit.window_started_at + 
             func.make_interval(0, 0, 0, 0, 0, 0, window_seconds) <= func.now())
     statement = insert(LoginRateLimit).values(
         scope=scope,
@@ -36,17 +36,17 @@ def check_and_record_login_attempt(
         index_elements=[LoginRateLimit.scope, LoginRateLimit.subject_digest],
         set_={
             "attempt_count": case(
-                (window_exppired, 1),
+                (window_expired, 1),
                 else_= LoginRateLimit.attempt_count + 1
             ),
             "window_started_at": case(
-                (window_exppired, func.now()),
+                (window_expired, func.now()),
                 else_=LoginRateLimit.window_started_at
             )
         },
         where=(
             or_(
-                window_exppired,
+                window_expired,
                 LoginRateLimit.attempt_count < limit
             )
         )
