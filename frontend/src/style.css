@@ -100,3 +100,18 @@
   color:#fff5ea;
   font:700 13px/1 system-ui,sans-serif;
 }
+
+/* Real cookie-auth dashboard: distinct from the local Mock game lobby. */
+.real-account-page .paper-card {max-width:660px;margin:0 auto}
+.real-account-page .button-row {flex-wrap:wrap;margin-top:18px}
+.real-account-page #real-auth-feedback:empty {display:none}
+.real-account-page #real-auth-feedback[data-tone="error"] {
+  margin:12px 0;
+  padding:12px 14px;
+  border:1px solid #bd8577;
+  border-left:4px solid #a65244;
+  border-radius:10px;
+  background:#f9e7e1;
+  color:#78352d;
+  font:600 13px/1.6 system-ui,sans-serif;
+}
