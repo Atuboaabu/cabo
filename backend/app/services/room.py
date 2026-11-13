@@ -97,7 +97,7 @@ def join_room(
                 RoomMember.room_id == room.id,
                 RoomMember.left_at.is_(None)
             )
-        ).all()
+        ).scalars().all()
 
         if len(used_seat_indexs) >= 4:
             raise exceptions.RoomIsFullException()
@@ -105,6 +105,7 @@ def join_room(
         for index in [0,1,2,3]:
             if index not in used_seat_indexs:
                 seat_index = index
+                break
         
         room_member = RoomMember(
             room_id = room.id,
@@ -117,6 +118,14 @@ def join_room(
         session.add(room_member)
         session.commit()
         return room
+    except IntegrityError as exc:
+        session.rollback()
+        if getattr(exc.orig, "sqlstate", None) == "23505":
+            constraint_name = exc.orig.diag.constraint_name
+
+            if constraint_name == "uq_room_members_active_account":
+                raise exceptions.AccountAlreadyInRoomException() from exc
+        raise
     except Exception:
         session.rollback()
         raise
