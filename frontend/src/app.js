@@ -154,6 +154,7 @@ async function submitRealLogin(form,data){
  }finally{
   realBusy=false;
   if(button?.isConnected)button.disabled=false;
+  else if(screen==='real-account')render();
  }
 }
 async function logoutRealSession(){
