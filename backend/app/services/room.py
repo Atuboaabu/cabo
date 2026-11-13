@@ -2,6 +2,7 @@ import secrets
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import select, func
 from datetime import datetime, timezone
 
 from app.models import UserAccount, Room, RoomMember
@@ -65,6 +66,57 @@ def create_room(
             if constraint_name == "uq_room_members_active_account":
                 raise exceptions.AccountAlreadyInRoomException() from exc
         raise
+    except Exception:
+        session.rollback()
+        raise
+
+def join_room(
+    session: Session,
+    user_account: UserAccount,
+    room_code: str
+)->Room:
+    try:
+        statement = (
+            select(Room).where(
+                Room.room_code == room_code,
+            ).with_for_update()
+        )
+
+        room = session.execute(
+            statement
+        ).scalar_one_or_none()
+
+        if room is None:
+            raise exceptions.RoomNotExistException()
+        
+        if room.state != "Lobby":
+            raise exceptions.RoomStateNotLobbyException()
+        
+        used_seat_indexs = session.execute(
+            select(RoomMember.seat_index).where(
+                RoomMember.room_id == room.id,
+                RoomMember.left_at.is_(None)
+            )
+        ).all()
+
+        if len(used_seat_indexs) >= 4:
+            raise exceptions.RoomIsFullException()
+        
+        for index in [0,1,2,3]:
+            if index not in used_seat_indexs:
+                seat_index = index
+        
+        room_member = RoomMember(
+            room_id = room.id,
+            account_id = user_account.id,
+            seat_index = seat_index,
+            is_ready = False,
+            joined_at = func.now()
+        )
+
+        session.add(room_member)
+        session.commit()
+        return room
     except Exception:
         session.rollback()
         raise

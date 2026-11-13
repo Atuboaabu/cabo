@@ -38,3 +38,12 @@ class AccountAlreadyInRoomException(Exception):
 
 class RoomCodeAllocationFailedException(Exception):
     pass
+
+class RoomNotExistException(Exception):
+    pass
+
+class RoomStateNotLobbyException(Exception):
+    pass
+
+class RoomIsFullException(Exception):
+    pass

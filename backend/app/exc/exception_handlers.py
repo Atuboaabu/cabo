@@ -159,3 +159,42 @@ def register_exception_handlers(app: FastAPI)->None:
                 "detail": "Unable to allocate room code" 
             }
         )
+    
+    @app.exception_handler(exceptions.RoomNotExistException)
+    async def room_not_exist_handle(
+        request: Request,
+        exc: exceptions.RoomNotExistException
+    ):
+        return JSONResponse(
+            status_code = status.HTTP_404_NOT_FOUND,
+            content = {
+                "code": "ROOM_NOT_EXIST",
+                "detail": "Room does not exist" 
+            }
+        )
+    
+    @app.exception_handler(exceptions.RoomStateNotLobbyException)
+    async def room_state_not_lobby_handle(
+        request: Request,
+        exc: exceptions.RoomStateNotLobbyException
+    ):
+        return JSONResponse(
+            status_code = status.HTTP_409_CONFLICT,
+            content = {
+                "code": "ROOM_STATE_NOT_LOBBY",
+                "detail": "The room has already been started or closed" 
+            }
+        )
+    
+    @app.exception_handler(exceptions.RoomIsFullException)
+    async def room_full_handle(
+        request: Request,
+        exc: exceptions.RoomIsFullException
+    ):
+        return JSONResponse(
+            status_code = status.HTTP_409_CONFLICT,
+            content = {
+                "code": "ROOM_IS_FULL",
+                "detail": "The room has already been fulled" 
+            }
+        )
