@@ -34,7 +34,7 @@ def create_room(
 
 @router.post(
     "/join",
-    status_code=status.HTTP_201_CREATED,
+    status_code=status.HTTP_200_OK,
     response_model=RoomResponse,
     dependencies=[OriginCheckDep]
 )
