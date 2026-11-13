@@ -1,11 +1,19 @@
+import secrets
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timezone
 
 from app.models import UserAccount, Room, RoomMember
-from app.security.verification import generate_code
 from app.exc import exceptions
+
+ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+def generate_room_code() -> str:
+    return "".join(
+        secrets.choice(ROOM_CODE_ALPHABET)
+        for _ in range(6)
+    )
 
 def create_room(
     session: Session,
@@ -13,7 +21,7 @@ def create_room(
 )-> Room:
     try:
         for _  in range(5):
-            room_code = generate_code(8)
+            room_code = generate_room_code()
             statement = (
                 insert(Room).values(
                     room_code = room_code,
@@ -28,10 +36,9 @@ def create_room(
             room_id = session.execute(
                 statement
             ).scalar_one_or_none()
-            if room_code is not None:
+            if room_id is not None:
                 break
         if room_id is None:
-            session.rollback()
             raise exceptions.RoomCodeConfilictException()
 
         now = datetime.now(timezone.utc)
@@ -56,7 +63,7 @@ def create_room(
             constraint_name = exc.orig.diag.constraint_name
 
             if constraint_name == "uq_room_members_active_account":
-                raise exceptions.RoomCodeConfilictException() from exc
+                raise exceptions.AccountAlreadyInRoomException() from exc
         raise
     except Exception:
         session.rollback()
