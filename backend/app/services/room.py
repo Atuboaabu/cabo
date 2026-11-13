@@ -134,23 +134,24 @@ def set_room_member_ready(
     session: Session,
     user_account: UserAccount,
     room_id: UUID,
-    ready: bool = True,
+    ready: bool
 )->RoomMember:
-    room = session.execute(
-        select(Room).where(
-            Room.id == room_id
-        ).with_for_update()
-    ).scalar_one_or_none()
-
-    if room is None:
-        raise exceptions.RoomNotExistException()
-        
-    if room.state != "Lobby":
-        raise exceptions.RoomStateNotLobbyException()
-    
-    if user_account.id == room.host_account_id:
-        raise exceptions.InvalidRequestException()
     try:
+        room = session.execute(
+            select(Room).where(
+                Room.id == room_id
+            ).with_for_update()
+        ).scalar_one_or_none()
+
+        if room is None:
+            raise exceptions.RoomNotExistException()
+            
+        if room.state != "Lobby":
+            raise exceptions.RoomStateNotLobbyException()
+        
+        if user_account.id == room.host_account_id:
+            raise exceptions.InvalidRequestException()
+
         room_member = session.execute(
             select(RoomMember).where(
                 RoomMember.room_id == room.id,
@@ -162,7 +163,7 @@ def set_room_member_ready(
         if room_member is None:
             raise exceptions.RequesterWrongException()
         
-        room_member.is_ready = True
+        room_member.is_ready = ready
         session.commit()
         session.refresh(room_member)
         return room_member
