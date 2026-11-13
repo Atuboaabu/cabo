@@ -6,7 +6,7 @@ from app.schemas import (UserAccountCreate,
                          UserAccountResponse,
                          VerificationCodeRequest,
                          UserAccountLogin)
-from app.services import accounts, verification, auth
+from app.services import accounts, verification, auth, login_rate_limit
 from app.normalization import normalize_email
 from app.integrations import email_sender
 from app.exc import exceptions
@@ -63,8 +63,18 @@ def register_useraccount(
 def login(
     session: SessionDep,
     login_info: UserAccountLogin,
+    request: Request,
     response: Response
 ):
+    ratelimit_info = [
+        ("ip", request.client.host),
+        ("email", login_info.email)
+    ]
+    login_rate_limit.check_login_ratelimit(
+        session,
+        ratelimit_info
+    )
+
     user = auth.authenticate_account(
         session,
         login_info.email,
