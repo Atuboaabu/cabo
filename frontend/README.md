@@ -12,13 +12,13 @@ npm test
 npm run build
 ```
 
-The dev command uses a dependency-free Node HTTP server with a **development-only same-origin proxy** for the two real registration endpoints. By default it forwards them to FastAPI at `http://localhost:8000`, avoiding browser CORS failures on `localhost:5173`. `npm run build` emits `dist/` without installing packages.
+The dev command uses a dependency-free Node HTTP server (Node.js 20+ required for separate Set-Cookie forwarding) with a **development-only same-origin proxy** for explicitly allowlisted real auth endpoints. By default it forwards them to FastAPI at `http://localhost:8000`, avoiding browser CORS failures on `localhost:5173`. `npm run build` emits `dist/` without installing packages.
 
 ## Adapter boundary
 
 `src/adapter.js` is an internal, provisional presentation adapter and **not** a FastAPI contract. `src/mock.js` supplies its UI-facing projection (`snapshot`) and command results (`send`). Replace the gateway with a real, authenticated adapter once owner-defined HTTP/WebSocket interfaces exist. The real adapter must provide authoritative Room and Player views, decision context, private grants and absolute deadlines, immutable request results, view semantic versions and reliable resync on event gaps.
 
-Mock modes are explicitly constrained: the login form does not authenticate against a real provider, **registration and verification-code sending use the real FastAPI API client instead of Mock**, an **independent demo-only entry** creates a local fixture rather than registering or logging in, real password recovery/email verification/changes/deletion never succeed, no cross-tab/cross-device server coordination is claimed, no remote players actually act, hidden-hand equality and multi-card Replace are never guessed, Peek/Spy/Swap target authorization is rejected, score summaries are illustrative. Single-card Replace uses illustrative public discard values, not a true deck engine. A received accepted Mock outcome does **not** indicate a real FastAPI operation succeeded.
+Mock modes are explicitly constrained: **registration, verification-code sending, login, session restore and logout use the real FastAPI API client**, an **independent demo-only entry** creates a local fixture rather than registering or logging in, real password recovery/email verification/changes/deletion never succeed, no cross-tab/cross-device server coordination is claimed, no remote players actually act, hidden-hand equality and multi-card Replace are never guessed, Peek/Spy/Swap target authorization is rejected, score summaries are illustrative. Single-card Replace uses illustrative public discard values, not a true deck engine. A received accepted Mock outcome does **not** indicate a real FastAPI operation succeeded.
 
 Use Alt+Shift+M in the app for a takeover demo; reopening/reclaiming is available through adapter command. Programmatic `gateway.send('disconnect'/'reconnect'/'expireSession'/'takeover'/'reclaim')` enables isolated scenario tests. No secrets are persisted to LocalStorage.
 
@@ -51,7 +51,7 @@ Registration includes a required `确认密码` input. The frontend compares it 
 
 ## Real FastAPI registration integration
 
-The registration screen uses **real HTTP calls**, not the Mock Gateway. The rest of the app (login, rooms and game) remains Mock-only until independent authentication/session contracts are implemented.
+Registration, login, session restore and logout use **real HTTP calls**, not MockGateway. Rooms, game actions and connection takeover remain a strictly separate Mock demonstration until real Room/Game APIs are implemented.
 
 ### API base URL configuration
 
@@ -95,3 +95,24 @@ The registration form now uses themed inline feedback close to the relevant fiel
 ## Signup label and confirmation warning
 
 The signup field is now simply labeled **昵称** with the placeholder **设置昵称（不可重复）**. This is presentation terminology only: the value still maps from the frontend `nickname` to backend `username`, and AUTH-18-R1 requires that nickname/game display name be globally unique. The confirmation-password mismatch uses a stronger CABO-themed burgundy warning panel with an exclamation marker and highlighted input border, announced via the existing accessible live status; the message clears when the two passwords match.
+
+## Real email/password login and HttpOnly Cookie Sessions
+
+- `src/auth-api.js` adds `login({email,password})` (POST `/auth/login`, 200), `getMe()` (GET `/auth/me`, 200), and `logout()` (POST `/auth/logout`, 204). All three use `credentials:'include'` so the browser, not JavaScript, handles HttpOnly `session_token` cookies. Existing registration calls and their error handling remain intact.
+- On boot the UI shows **正在检查登录状态** until GET `/auth/me` resolves. HTTP 200 restores the public account (username/email); HTTP 401 shows the real login form. Network/5xx shows **认证服务暂不可用** with a retry action, not a false logout. No account or token is stored in localStorage.
+- Real login errors are surfaced alongside the login form without clearing its email field: `INVALID_CREDENTIALS` / 401, `INVALID_COOKIE` / 401, `TOO_MANY_REQUESTS` / 429, untrusted Origin / 403, 5xx and network failures. Login submits are deduplicated while pending.
+- Authenticated UI displays only the public real account fields and **游戏功能尚未连接服务器**. It deliberately grants **no** Mock Room/Game authority. **进入本地 Mock 演示** remains an independent, explicitly labeled fixture; entering it does not place the real account into MockGateway.
+- Real logout uses POST `/auth/logout`. A 204 or expired-session 401 clears local public-account UI state; network/5xx retains the local state and warns that server revocation is unconfirmed. Mock demo logout is unaffected.
+- The frontend dev server at `http://localhost:5173` proxies only POST `/auth/verification-codes`, POST `/auth/register`, POST `/auth/login`, GET `/auth/me`, POST `/auth/logout`, and optional POST `/auth/refresh` to the configured FastAPI origin (`http://localhost:8000` by default). It passes browser `Cookie` and the **actual** browser `Origin` on POST requests (never fabricates an Origin), forwards separate `Set-Cookie` values as multiple headers, and preserves backend statuses/errors. It never logs credentials. Production must provide an equivalent trusted-origin/CORS/proxy configuration.
+- FastAPI's configured `allowed_origins` must include the real browser origin (normally `http://localhost:5173` for this proxy). For production use HTTPS; during local development, verify the browser accepts the backend's `Secure` cookie setting over `localhost`, or use an explicit development-only server configuration. Browser devtools may display HttpOnly attributes, but application JavaScript must never read them.
+
+### Manual cookie-auth integration (requires running backend and browser)
+
+1. Start FastAPI plus its PostgreSQL database at `http://localhost:8000` and run `cd frontend && npm run dev`; open `http://localhost:5173` (use this exact hostname consistently).
+2. Register a verified account with the existing email-code flow, click **返回登录**, and log in with the same email/password; the real account page must show username/email, with no real game access.
+3. Inspect the browser Network/Application panels: POST `/auth/login` should return 200 with an HttpOnly `session_token` cookie; do not copy its value. Reload and verify GET `/auth/me` returns 200 and the account is restored.
+4. Try an incorrect password (401 / `INVALID_CREDENTIALS`), repeated attempts (429 / `TOO_MANY_REQUESTS`), and an expired/invalid session (401 / `INVALID_COOKIE`), confirming meaningful errors.
+5. Click **退出登录**. POST `/auth/logout` should return 204 and clear the cookie; subsequent GET `/auth/me` should return 401. Simulate a network failure during logout and verify the UI does **not** falsely claim server-side revocation.
+6. Independently click **进入本地 Mock 演示** and verify it continues to use a synthetic identity, not the real account.
+
+Run `npm run check && npm test && npm run build` for frontend-only checks. Automated tests include isolated HTTP client semantics and a local fake-FastAPI proxy test; they cannot prove a production Cookie/Secure/Origin configuration without a real browser and backend.
