@@ -169,3 +169,20 @@ For a Create/Join network failure (`RoomApiError.outcomeUnknown`) the UI **never
 6. From the real account UI, log out and confirm the Room UUID locator is removed. Verify a delayed response cannot recreate the logged-out Room view.
 
 Run `cd frontend && npm run check && npm test && npm run build`. Automated tests simulate the state and API but cannot replace real two-account browser and database integration.
+
+## Phase 6-6-C · Real Lobby management (Ready / Leave / Kick / Disband)
+
+The authenticated Room UI now exposes **Ready / Unready** to a *non-Host member*, **Leave** to any member, **Kick** to the Host for other non-Host members, and **Disband** to the Host. Buttons require a recently verified, non-stale FastAPI Room View with `state === 'Lobby'` and current `realAccount.id` appearing in `members`. This client-side gating is a presentation safeguard only; FastAPI remains the authority for Room permissions and state.
+
+- Ready calls `PUT /rooms/{id}/ready` with `{ready: !myMember.is_ready}`, then, **only after HTTP 200**, GETs the authoritative Room View. UI never optimistically flips Ready. Host has no Ready button.
+- Leave requires confirmation. Host receives the explicit warning **「你是房主，离开将解散整个房间，所有成员都会退出。确定继续吗？」**; non-Host gets a regular Leave confirmation. Only HTTP 204 resets the in-memory Room and the sessionStorage UUID; the auth cookie remains untouched.
+- Kick requires Host + target member currently in Room View, disallows self and Host targets, and requires a dialog that names the exact member. HTTP 204 is followed by GET Room; no client-side removal from the member list. A target 404 asks the Host to refresh.
+- Disband is Host-only, uses a danger confirmation **「解散后房间将关闭，所有成员退出，无法恢复。确定解散吗？」**, and clears Room state/navigation **only after HTTP 204** without a follow-up GET.
+
+While a write or follow-up GET is pending, all Lobby mutation controls are disabled; there is one operation at a time. A successful Ready/Kick write followed by GET failure is reported as **「操作可能已完成，但暂时无法确认最新房间状态，请刷新房间。」** and marks the old view stale, blocking further writes until an authoritative GET succeeds. Network failure/5xx during a write also retains the Room UUID and marks the result unknown; the UI never auto-retries. GET 403/404 revokes invalid navigation, 401 triggers a separate authentication recheck, and confirmed real logout invalidates late Room responses. Error feedback does not display cookies, token values or backend exception internals.
+
+No real Game Start, Ready-to-Start action, WebSocket, polling or gameplay is included. MockGateway, Auth API protocol, database and FastAPI are unchanged.
+
+### Phase 6-6-C manual integration
+
+With two independent authenticated browser sessions in the same Room, verify guest Ready → GET, Unready → GET and Leave → 204, and Host Kick → 204 → GET, Leave (with disband warning) → 204 and Disband → 204. Confirm that guests never see Kick/Disband and Hosts never see Ready. Simulate write failure or follow-up GET outage, verify stale/unknown warning and manual refresh rather than duplicate writes. Run `cd frontend && npm run check && npm test && npm run build` prior to merging.
