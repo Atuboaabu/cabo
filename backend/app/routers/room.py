@@ -60,7 +60,7 @@ def join_room(
 
 @router.put(
     "/{room_id}/ready",
-    status_code=status.HTTP_204_NO_CONTENT,
+    status_code=status.HTTP_200_OK,
     response_model=RoomReadyResponse,
     dependencies=[OriginCheckDep]
 )
@@ -84,7 +84,7 @@ def roommember_set_ready(
 
 @router.post(
     "/{room_id}/leave",
-    status_code=status.HTTP_200_OK,
+    status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[OriginCheckDep]
 )
 def roommember_leave(
