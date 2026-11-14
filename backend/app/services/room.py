@@ -363,7 +363,7 @@ def get_room_info(
         ).order_by(
             RoomMember.seat_index
         )
-    ).scalars().all()
+    ).mappings().all()
 
     return RoomView(
         id=room.id,

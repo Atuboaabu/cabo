@@ -136,8 +136,7 @@ def disband_room(
 @router.get(
     "/{room_id}",
     status_code=status.HTTP_200_OK,
-    response_model=RoomView,
-    dependencies=[OriginCheckDep]
+    response_model=RoomView
 )
 def get_room_info(
     session: SessionDep,
