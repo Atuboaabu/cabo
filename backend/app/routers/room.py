@@ -115,3 +115,19 @@ def kick_room_member(
         room_id,
         target_account_id
     )
+
+@router.post(
+    "/{room_id}/disband",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[OriginCheckDep]
+)
+def diaband_room(
+    session: SessionDep,
+    user: ActiveUserDep,
+    room_id: UUID
+):
+    room.disband_room(
+        session,
+        user,
+        room_id
+    )

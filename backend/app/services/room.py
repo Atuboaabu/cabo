@@ -171,6 +171,20 @@ def set_room_member_ready(
         session.rollback()
         raise
 
+def _close_room(
+    session: Session,
+    room: Room
+)->None:
+    session.execute(
+        update(RoomMember).where(
+            RoomMember.room_id == room.id,
+            RoomMember.left_at.is_(None)
+        ).values(
+            left_at = func.now()
+        )
+    )
+    room.state = "Closed"
+
 def leave_room(
     session: Session,
     user_account: UserAccount,
@@ -200,15 +214,7 @@ def leave_room(
             raise exceptions.RequesterWrongException()
 
         if user_account.id == room.host_account_id:
-            session.execute(
-                update(RoomMember).where(
-                    RoomMember.room_id == room.id,
-                    RoomMember.left_at.is_(None)
-                ).values(
-                    left_at = func.now()
-                )
-            )
-            room.state = "Closed"
+            _close_room(session, room)
         else:
             session.execute(
                 update(RoomMember).where(
@@ -279,6 +285,44 @@ def kick_room_member(
                 left_at = func.now()
             )
         )
+
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+
+def disband_room(
+    session: Session,
+    host_user: UserAccount,
+    room_id: UUID
+)->None:
+    try:
+        room = session.execute(
+            select(Room).where(
+                Room.id == room_id
+            ).with_for_update()
+        ).scalar_one_or_none()
+
+        if room is None:
+            raise exceptions.RoomNotExistException()
+
+        if room.state != "Lobby":
+            raise exceptions.RoomStateNotLobbyException()
+
+        host_member = session.execute(
+            select(RoomMember).where(
+                RoomMember.room_id == room.id,
+                RoomMember.account_id == host_user.id,
+                RoomMember.left_at.is_(None)
+            )
+        ).scalar_one_or_none()
+        if host_member is None:
+            raise exceptions.RequesterWrongException()
+
+        if room.host_account_id != host_user.id:
+            raise exceptions.RequesterWrongException()
+
+        _close_room(session, room)
 
         session.commit()
     except Exception:
