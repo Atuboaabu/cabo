@@ -140,3 +140,17 @@
  .real-room-card .member-meta{justify-content:flex-start}
  .real-room-area>.section-heading{align-items:flex-start}
 }
+
+/* Phase 6-6-C · accessible real-Lobby controls, separate from Mock actions. */
+.real-room-area .real-lobby-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:23px;border-top:1px solid #d4ba8a;padding-top:18px}
+.real-room-area .real-lobby-actions button{min-width:112px}
+.real-room-card .member-meta button{white-space:nowrap}
+.real-room-area button:disabled{opacity:.6;cursor:not-allowed;box-shadow:none;transform:none}
+.real-room-area .real-room-feedback[data-tone="error"]{box-shadow:inset 3px 0 #a65244}
+@media(max-width:650px){
+ .real-room-area .real-lobby-actions{flex-direction:column;align-items:stretch}
+ .real-room-area .real-lobby-actions button{width:100%}
+ .real-room-card .member{flex-wrap:wrap;gap:10px}
+ .real-room-card .member-meta{width:100%;justify-content:flex-start}
+ .real-room-card .member-meta button{margin-left:auto}
+}
