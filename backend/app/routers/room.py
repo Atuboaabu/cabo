@@ -81,3 +81,19 @@ def roommember_set_ready(
         account_id=room_member.account_id,
         is_ready=room_member.is_ready
     )
+
+@router.post(
+    "/{room_id}/leave",
+    status_code=status.HTTP_200_OK,
+    dependencies=[OriginCheckDep]
+)
+def roommember_leave(
+    session: SessionDep,
+    user: ActiveUserDep,
+    room_id: UUID
+):
+    room.leave_room(
+        session,
+        user,
+        room_id
+    )
