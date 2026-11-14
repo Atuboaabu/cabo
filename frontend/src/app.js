@@ -11,10 +11,12 @@ let verificationCooldownUntil=0;
 let verificationRequestPending=false;
 // Real cookie-auth state: public Account only, never copied into MockGateway.
 let realAuthState='checking', realAccount=null, realAuthError='', realBusy=false;
+let realRoomConfirmation=null;
 let roomStorage=null;
 try{roomStorage=window.sessionStorage;}catch{/* optional navigation storage */}
 const realRooms=createRealRoomState({
  api:createRoomApi(),storage:roomStorage,
+ getAccountId:()=>realAccount?.id,
  onChange:()=>{if(realAuthState==='authenticated'&&screen==='real-account')render();},
  onUnauthorized:()=>restoreRealSession({skipRoomRestore:true})
 });
@@ -30,12 +32,20 @@ function shell(inner,cls=''){
 function realRoomPanel(){
  const room=realRooms.state,waiting=!!room.pending;
  const error=room.error?'<p class="real-room-feedback" data-tone="error" role="alert">'+esc(room.error)+'</p>':'';
- const pending=waiting?'<p class="real-room-feedback" data-tone="info" role="status">正在'+(room.pending==='create'?'创建房间':room.pending==='join'?'加入房间':'读取服务器房间信息')+'…</p>':'';
+ const pending=waiting?'<p class="real-room-feedback" data-tone="info" role="status">正在'+({create:'创建房间',join:'加入房间',read:'同步服务器房间信息',ready:'更新准备状态',leave:'离开房间',kick:'踢出成员',disband:'解散房间'}[room.pending]||'处理房间请求')+'…</p>':'';
  if(room.roomId){
   const r=room.view,members=r?[...r.members].sort((a,b)=>a.seat_index-b.seat_index):[];
+  const me=r?.members.find(m=>m.account_id===realAccount.id);
+  const lobby=r?.state==='Lobby'&&!!me;
+  const locked=waiting||room.stale||room.outcomeUnknown;
+  const lobbyActions=lobby?'<div class="real-lobby-actions">'
+   +(!me.is_host?'<button type="button" class="primary" data-action="realRoomReady" '+(locked?'disabled':'')+'>'+(me.is_ready?'取消准备':'准备')+'</button>':'')
+   +'<button type="button" class="outline" data-action="realRoomLeave" '+(locked?'disabled':'')+'>离开房间</button>'
+   +(me.is_host?'<button type="button" class="danger" data-action="realRoomDisband" '+(locked?'disabled':'')+'>解散房间</button>':'')
+   +'</div>':'';
   return '<section class="real-room-area"><div class="section-heading"><div><span class="eyebrow">REAL ROOM · FASTAPI</span><h2>真实房间</h2></div><button type="button" class="outline" data-action="realRoomRefresh" '+(waiting?'disabled':'')+'>刷新房间</button></div>'
    +pending+error+(r?'<article class="paper-card real-room-card"><div class="room-summary"><div><span class="eyebrow">房间码</span><strong class="real-room-code">'+esc(r.room_code)+'</strong></div><div><span>房间状态</span><strong>'+esc(r.state)+'</strong></div><div><span>成员人数</span><strong>'+members.length+' / 4</strong></div></div><p class="hint">房主账号：'+esc(r.host_account_id)+'</p>'+(room.stale?'<p class="real-room-feedback" data-tone="info" role="status">这是上次确认的房间信息，请刷新后核实最新状态。</p>':'')
-   +'<h3>成员与座位</h3><div class="member-list">'+members.map(m=>'<div class="member"><div class="avatar">'+esc(m.username[0]||'?')+'</div><div><strong>'+esc(m.username)+'</strong> '+(m.account_id===realAccount.id?'<span class="gold-chip">你</span>':'')+'<small>座位 '+esc(m.seat_index)+' · '+esc(m.account_id)+'</small></div><div class="member-meta">'+(m.is_host?'<span class="gold-chip">房主</span>':'')+'<span class="'+(m.is_ready?'ready':'unready')+'">'+(m.is_ready?'✓ 已准备':'○ 未准备')+'</span></div></div>').join('')+'</div></article>'
+   +'<h3>成员与座位</h3><div class="member-list">'+members.map(m=>'<div class="member"><div class="avatar">'+esc(m.username[0]||'?')+'</div><div><strong>'+esc(m.username)+'</strong> '+(m.account_id===realAccount.id?'<span class="gold-chip">你</span>':'')+'<small>座位 '+esc(m.seat_index)+' · '+esc(m.account_id)+'</small></div><div class="member-meta">'+(m.is_host?'<span class="gold-chip">房主</span>':'')+'<span class="'+(m.is_ready?'ready':'unready')+'">'+(m.is_ready?'✓ 已准备':'○ 未准备')+'</span>'+(lobby&&me.is_host&&m.account_id!==me.account_id&&!m.is_host?'<button type="button" class="small outline" data-action="realRoomKick:'+esc(m.account_id)+'" '+(locked?'disabled':'')+'>踢出</button>':'')+'</div></div>').join('')+'</div>'+lobbyActions+'</article>'
    :'<article class="paper-card"><p>服务器尚未确认房间访问权限，目前不展示成员。</p><p class="hint">如查询失败，请点击「刷新房间」。网络错误并不代表房间已解散。</p></article>')+'</section>';
  }
  return '<section class="real-room-area"><h2>真实房间大厅</h2>'+pending+error
