@@ -87,7 +87,7 @@ def roommember_set_ready(
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[OriginCheckDep]
 )
-def roommember_leave(
+def room_member_leave(
     session: SessionDep,
     user: ActiveUserDep,
     room_id: UUID
@@ -103,7 +103,7 @@ def roommember_leave(
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[OriginCheckDep]
 )
-def roommember_leave(
+def kick_room_member(
     session: SessionDep,
     user: ActiveUserDep,
     room_id: UUID,

@@ -244,6 +244,16 @@ def kick_room_member(
         if room.state != "Lobby":
             raise exceptions.RoomStateNotLobbyException()
 
+        host_member = session.execute(
+            select(RoomMember).where(
+                RoomMember.room_id == room.id,
+                RoomMember.account_id == host_user.id,
+                RoomMember.left_at.is_(None)
+            )
+        ).scalar_one_or_none()
+        if host_member is None:
+            raise exceptions.RequesterWrongException()
+
         if room.host_account_id != host_user.id:
             raise exceptions.RequesterWrongException()
 
