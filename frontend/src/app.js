@@ -389,6 +389,6 @@ setInterval(()=>{
  root.querySelectorAll('[data-deadline]').forEach(el=>{const d=Number(el.dataset.deadline)||null;el.textContent=(el.id==='timer'?'⏱ ':'')+formatRemaining(d);});
  updateVerificationCountdown();
 },500);
-window.addEventListener('keydown',e=>{if(e.altKey&&e.shiftKey&&e.key.toLowerCase()==='m'){e.preventDefault();confirm('模拟新设备接管','旧连接会停止接受受保护操作。','takeover');}});
+window.addEventListener('keydown',e=>{if(screen!=='real-account'&&e.altKey&&e.shiftKey&&e.key.toLowerCase()==='m'){e.preventDefault();confirm('模拟新设备接管','旧连接会停止接受受保护操作。','takeover');}});
 render();
 restoreRealSession();
