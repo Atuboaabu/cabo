@@ -141,3 +141,19 @@ test('Reset clears only the Room locator, and Mock gateway remains independent',
  assert.match(app,/进入本地 Mock 演示/);
  assert.doesNotMatch(app,/gateway\.send\('createRoom'\)/);
 });
+
+test('in-flight Room responses after logout cannot repopulate storage',async()=>{
+ const store=storage();
+ let finish;
+ const pending=new Promise(resolve=>finish=resolve);
+ const rooms=createRealRoomState({
+  api:{createRoom:async()=>pending,getRoom:async()=>view},storage:store
+ });
+ const started=rooms.createRoom();
+ rooms.reset();
+ finish(room);
+ await started;
+ assert.equal(rooms.state.roomId,null);
+ assert.equal(rooms.state.view,null);
+ assert.equal(store.getItem('cabo.lastRealRoomId'),null);
+});
