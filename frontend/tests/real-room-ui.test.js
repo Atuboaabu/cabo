@@ -257,3 +257,24 @@ test('non-Lobby view never renders executable write actions',async()=>{
   assert.doesNotMatch(ui.root.innerHTML,new RegExp('data-action="'+action));
  }
 });
+
+test('in-flight real Lobby mutation disables all conflicting controls',async()=>{
+ let finish;
+ const pending=new Promise(resolve=>finish=resolve);
+ const ui=boot({storedId:id,roomApi:{
+  getRoom:async()=>({...baseRoom,members}),
+  kickMember:async()=>pending
+ }});
+ await flush();
+ clickReal(ui,'realRoomKick:'+members[0].account_id);
+ clickReal(ui,'realRoomApprove');
+ await flush();
+ const html=ui.root.innerHTML;
+ assert.match(html,/正在踢出成员/);
+ assert.match(html,/data-action="realRoomLeave" disabled/);
+ assert.match(html,/data-action="realRoomDisband" disabled/);
+ assert.match(html,/data-action="realRoomKick:[^"]+" disabled/);
+ finish(null);
+ await flush();
+ assert.equal(ui.mockSends(),0);
+});
