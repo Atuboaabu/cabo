@@ -12,6 +12,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
     roomId:null,view:null,pending:null,error:'',outcomeUnknown:false,
     joinCode:'',stale:false
   };
+  let generation=0;
   const emit=()=>onChange(state);
   const save=id=>{
     try { if(id)storage?.setItem(KEY,id);else storage?.removeItem(KEY); }
@@ -26,6 +27,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
     return null;
   };
   function reset(){
+    generation++; // Invalidate any outstanding create/join/GET response.
     save(null);
     state.roomId=null;state.view=null;state.pending=null;state.error='';
     state.outcomeUnknown=false;state.joinCode='';state.stale=false;
@@ -52,41 +54,46 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
   }
   async function readRoom(id) {
     if(state.pending || !UUID.test(id))return false;
+    const token=generation;
     state.pending='read';state.error='';state.stale=!!state.view;emit();
     try{
       const room=await api.getRoom(id);
+      if(token!==generation)return false;
       if(room.id.toLowerCase()!==id.toLowerCase())throw Error('服务端返回的房间 ID 不一致，请重新验证。');
       state.roomId=id;state.view=room;state.error='';state.stale=false;
       state.outcomeUnknown=false;
       save(id);
       return true;
     }catch(error){
-      failure(error,'read');
+      if(token===generation)failure(error,'read');
       return false;
-    }finally{state.pending=null;emit();}
+    }finally{if(token===generation){state.pending=null;emit();}}
   }
   async function enter(write) {
     if(state.pending||state.outcomeUnknown||state.roomId)return false;
+    const token=generation;
     state.pending=write;state.error='';emit();
     let roomId=null;
     try{
       const result=write==='create'
         ? await api.createRoom()
         : await api.joinRoom(state.joinCode.trim().toUpperCase());
+      if(token!==generation)return false;
       // Only an HTTP 201/200 RoomResponse supplies a genuine ID.
       roomId=result.id;
       state.roomId=roomId;save(roomId);
       state.pending='read';emit();
       const room=await api.getRoom(roomId);
+      if(token!==generation)return false;
       if(room.id.toLowerCase()!==roomId.toLowerCase())throw Error('服务端返回的房间 ID 不一致，请重新验证。');
       state.view=room;state.error='';state.stale=false;state.outcomeUnknown=false;
       return true;
     }catch(error){
       // If Create/Join committed but returned no ID, there is no safe way
       // to discover that Room through the available backend endpoints.
-      failure(error,roomId?'read':write);
+      if(token===generation)failure(error,roomId?'read':write);
       return false;
-    }finally{state.pending=null;emit();}
+    }finally{if(token===generation){state.pending=null;emit();}}
   }
   async function createRoom(){return enter('create');}
   async function joinRoom(){
