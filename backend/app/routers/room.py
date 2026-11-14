@@ -1,6 +1,7 @@
 from uuid import UUID
 from fastapi import APIRouter, status
-from app.schemas import RoomResponse, RoomJoinRequest, RoomReadyResponse, RoomReadyRequest
+from app.schemas import (RoomResponse, RoomJoinRequest, RoomReadyResponse, RoomReadyRequest,
+                         RoomView)
 
 from app.depencicies import SessionDep, ActiveUserDep, OriginCheckDep
 from app.services import room
@@ -121,12 +122,29 @@ def kick_room_member(
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[OriginCheckDep]
 )
-def diaband_room(
+def disband_room(
     session: SessionDep,
     user: ActiveUserDep,
     room_id: UUID
 ):
     room.disband_room(
+        session,
+        user,
+        room_id
+    )
+
+@router.get(
+    "/{room_id}",
+    status_code=status.HTTP_200_OK,
+    response_model=RoomView,
+    dependencies=[OriginCheckDep]
+)
+def get_room_info(
+    session: SessionDep,
+    user: ActiveUserDep,
+    room_id: UUID
+):
+    return room.get_room_info(
         session,
         user,
         room_id

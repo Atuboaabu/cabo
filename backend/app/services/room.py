@@ -7,7 +7,7 @@ from sqlalchemy import select, func, update
 from datetime import datetime, timezone
 
 from app.models import UserAccount, Room, RoomMember
-from app.schemas import ROOM_CODE_ALPHABET
+from app.schemas import ROOM_CODE_ALPHABET, RoomMemberView, RoomView
 from app.exc import exceptions
 
 def generate_room_code() -> str:
@@ -328,3 +328,56 @@ def disband_room(
     except Exception:
         session.rollback()
         raise
+
+def get_room_info(
+    session: Session,
+    user_account: UserAccount,
+    room_id: UUID
+)->RoomView:
+    room = session.get(Room, room_id)
+    if room is None:
+        raise exceptions.RoomNotExistException()
+
+    room_member = session.execute(
+        select(RoomMember).where(
+            RoomMember.room_id == room.id,
+            RoomMember.account_id == user_account.id,
+            RoomMember.left_at.is_(None)
+        )
+    ).scalar_one_or_none()
+    if room_member is None:
+        raise exceptions.RequesterWrongException()
+
+    members_info = session.execute(
+        select(
+            RoomMember.account_id,
+            UserAccount.username,
+            RoomMember.seat_index,
+            RoomMember.is_ready
+        ).join(
+            UserAccount,
+            RoomMember.account_id == UserAccount.id
+        ).where(
+            RoomMember.room_id == room_id,
+            RoomMember.left_at.is_(None)
+        ).order_by(
+            RoomMember.seat_index
+        )
+    ).scalars().all()
+
+    return RoomView(
+        id=room.id,
+        room_code=room.room_code,
+        state=room.state,
+        host_account_id=room.host_account_id,
+        members=[
+            RoomMemberView(
+                account_id=member_info.account_id,
+                username=member_info.username,
+                seat_index=member_info.seat_index,
+                is_ready=member_info.is_ready,
+                is_host=(member_info.account_id == room.host_account_id)
+            )
+            for member_info in members_info
+        ]
+    )

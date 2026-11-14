@@ -31,3 +31,17 @@ class RoomReadyRequest(BaseModel):
 class RoomReadyResponse(BaseModel):
     account_id: uuid.UUID
     is_ready: bool
+
+class RoomMemberView(BaseModel):
+    account_id: uuid.UUID
+    username: str
+    seat_index: int
+    is_ready: bool
+    is_host: bool
+
+class RoomView(BaseModel):
+    id: uuid.UUID
+    room_code: str
+    state: str
+    host_account_id: uuid.UUID
+    members: list[RoomMemberView]
