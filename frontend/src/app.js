@@ -194,10 +194,12 @@ async function logoutRealSession(){
  realBusy=true;realAuthError='';render();
  try{
   await createAuthApi().logout();
+  realRoomConfirmation=null;
   realRooms.reset();
   realAccount=null;realAuthState='anonymous';screen='auth';authMode='login';
  }catch(error){
   if(error.status===401){
+   realRoomConfirmation=null;
    realRooms.reset();
    realAccount=null;realAuthState='anonymous';screen='auth';authMode='login';
   }else{
@@ -275,6 +277,41 @@ async function submitRealRegistration(form,data){
   if(codeButton?.isConnected)updateVerificationCountdown();
  }
 }
+function confirmRealRoom(action,targetAccountId){
+ const r=realRooms.state;
+ if(!r.view||r.pending||r.stale||r.outcomeUnknown||r.view.state!=='Lobby'||!realAccount)return;
+ if(!realRooms.allowedMutation(action,targetAccountId))return;
+ const me=r.view.members.find(m=>m.account_id===realAccount.id);
+ if(!me)return;
+ let title,message,danger=false;
+ if(action==='leave'){
+  title='离开房间';
+  message=me.is_host?'你是房主，离开将解散整个房间，所有成员都会退出。确定继续吗？':'确定离开当前房间吗？';
+  danger=me.is_host;
+ }else if(action==='disband'){
+  title='解散房间';
+  message='解散后房间将关闭，所有成员退出，无法恢复。确定解散吗？';
+  danger=true;
+ }else if(action==='kick'){
+  const target=r.view.members.find(m=>m.account_id===targetAccountId);
+  if(!target||target.is_host||target.account_id===me.account_id)return;
+  title='踢出成员';
+  message='确定将「'+target.username+'」踢出当前房间吗？';
+  danger=true;
+ }else return;
+ realRoomConfirmation={action,targetAccountId,roomId:r.roomId,title,message,danger};
+ render();
+}
+function approveRealRoom(){
+ const c=realRoomConfirmation;
+ realRoomConfirmation=null;
+ if(!c||c.roomId!==realRooms.state.roomId||realAuthState!=='authenticated'||
+    screen!=='real-account'||!realRooms.allowedMutation(c.action,c.targetAccountId)){render();return;}
+ render();
+ if(c.action==='leave')realRooms.leaveRoom();
+ if(c.action==='kick')realRooms.kickMember(c.targetAccountId);
+ if(c.action==='disband')realRooms.disbandRoom();
+}
 root.addEventListener('click',e=>{
  const link=e.target.closest('[data-auth]');
  if(link){e.preventDefault();authMode=link.dataset.auth;notice='';render();return;}
@@ -287,6 +324,18 @@ root.addEventListener('click',e=>{
  if(a==='realRoomCreate'&&realAuthState==='authenticated'&&screen==='real-account'){realRooms.createRoom();return;}
  if(a==='realRoomRefresh'&&realAuthState==='authenticated'&&screen==='real-account'){realRooms.refresh();return;}
  if(a==='realRoomRecheck'&&realAuthState==='authenticated'&&screen==='real-account'){restoreRealSession({skipRoomRestore:true});return;}
+ if(a==='realRoomCancel'){realRoomConfirmation=null;render();return;}
+ if(a==='realRoomApprove'){approveRealRoom();return;}
+ if(a==='realRoomReady'&&realAuthState==='authenticated'&&screen==='real-account'){
+  const me=realRooms.state.view?.members.find(m=>m.account_id===realAccount.id);
+  if(me&&realRooms.allowedMutation('ready'))realRooms.setReady(!me.is_ready);
+  return;
+ }
+ if(a==='realRoomLeave'&&realAuthState==='authenticated'&&screen==='real-account'){confirmRealRoom('leave');return;}
+ if(a==='realRoomDisband'&&realAuthState==='authenticated'&&screen==='real-account'){confirmRealRoom('disband');return;}
+ if(a.startsWith('realRoomKick:')&&realAuthState==='authenticated'&&screen==='real-account'){
+  confirmRealRoom('kick',a.slice('realRoomKick:'.length));return;
+ }
  if(a==='dismiss'){notice='';render();return;}
  if(a==='cancelModal'){modal=null;render();return;}
  if(a==='confirmModal'){const m=modal;modal=null;send(m.command,m.payload);return;}
