@@ -116,3 +116,33 @@ The signup field is now simply labeled **昵称** with the placeholder **设置�
 6. Independently click **进入本地 Mock 演示** and verify it continues to use a synthetic identity, not the real account.
 
 Run `npm run check && npm test && npm run build` for frontend-only checks. Automated tests include isolated HTTP client semantics and a local fake-FastAPI proxy test; they cannot prove a production Cookie/Secure/Origin configuration without a real browser and backend.
+
+## Phase 6-6-A · Real Room HTTP client (UI not yet integrated)
+
+`src/room-api.js` exposes `createRoomApi({baseUrl?,fetchImpl?})`. It reuses the existing `getAuthApiBaseUrl()` configuration and browser-owned HttpOnly Session cookies (`credentials: 'include'`), but is **not imported into `app.js`**. The existing Room/Game UI remains a separate local Mock demonstration. No real Account is assigned to a Mock player.
+
+| Client method | HTTP method / path | Expected |
+| --- | --- | --- |
+| `createRoom()` | POST `/rooms` | 201 RoomResponse |
+| `joinRoom(roomCode)` | POST `/rooms/join` | 200 RoomResponse; `{room_code: roomCode}` |
+| `getRoom(roomId)` | GET `/rooms/{room_id}` | 200 RoomView |
+| `setReady(roomId, ready)` | PUT `/rooms/{room_id}/ready` | 200 RoomReadyResponse; `{ready}` |
+| `leaveRoom(roomId)` | POST `/rooms/{room_id}/leave` | 204, returns `null` |
+| `kickMember(roomId, accountId)` | POST `/rooms/{room_id}/members/{account_id}/kick` | 204, returns `null` |
+| `disbandRoom(roomId)` | POST `/rooms/{room_id}/disband` | 204, returns `null` |
+
+The client verifies exact HTTP success status and required public response shape. Errors are `RoomApiError` with `status`, sanitized backend `code`, and `outcomeUnknown`. Network failures and 5xx on writes are **indeterminate** (the server may have committed the operation); the future UI must refresh the authoritative Room view before deciding whether to retry. This is not a client-side substitute for server-side Room membership, Host, Ready or Game rules. No secret values are logged or saved.
+
+The dev server forwards **only** these seven exact Room route shapes alongside the existing Auth allowlist. Dynamic `room_id` and `target_account_id` must match the canonical hyphenated UUID text pattern; other `/rooms/` paths never reach FastAPI. Both POST and PUT forward the actual browser `Origin`, and requests with cookies forward the browser `Cookie`. The proxy supports JSON bodies where supplied, correctly forwards multiple `Set-Cookie` values and the upstream HTTP code/body, and retains the 64 KiB request cap and 15-second timeout. `CABO_BACKEND_URL` continues to select FastAPI's origin.
+
+To check Phase 6-6-A independently (no Room UI yet), start FastAPI and the frontend dev server, then import the module from a temporary browser console or a development-only ES module:
+
+```js
+import {createRoomApi} from '/src/room-api.js';
+const rooms=createRoomApi();
+const created=await rooms.createRoom();
+// After authorization, use created.id with getRoom/setReady/leaveRoom.
+// Do not test disband/kick on production rooms without authorization.
+```
+
+The browser must already have a valid Auth Session, and FastAPI must trust the real browser Origin. Run `npm run check && npm test && npm run build` under `frontend/`; the new unit and proxy integration tests do not require a live PostgreSQL server. End-to-end server permission and concurrent Room business rules still require separate backend/browser testing.
