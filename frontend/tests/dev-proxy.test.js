@@ -95,3 +95,104 @@ test('development proxy preserves auth Cookie, Origin, status and separate Set-C
  const large=await fetch(base+'/auth/login',{method:'POST',headers:{Origin:origin},body:'x'.repeat(65537)});
  assert.equal(large.status,413);
 });
+
+test('Room proxy strict methods/UUIDs, POST+PUT Origin, Cookie, body and Auth regression',async(t)=>{
+ const room='123e4567-e89b-12d3-a456-426614174000';
+ const account='123e4567-e89b-12d3-a456-426614174001';
+ const received=[];
+ const backend=createServer(async(req,res)=>{
+  const chunks=[];for await(const chunk of req)chunks.push(chunk);
+  received.push({method:req.method,path:req.url,origin:req.headers.origin,cookie:req.headers.cookie,body:Buffer.concat(chunks).toString()});
+  const path=req.url;
+  if(path==='/auth/me'){
+   res.writeHead(401,{'Content-Type':'application/json'});
+   res.end(JSON.stringify({code:'INVALID_COOKIE'}));return;
+  }
+  if(path==='/rooms'){
+   res.writeHead(201,{'Content-Type':'application/json','Set-Cookie':[
+    'session_token=one; HttpOnly; Path=/',
+    'aux=two; HttpOnly; Path=/'
+   ]});
+   res.end(JSON.stringify({id:room,room_code:'ABC234',host_account_id:account,state:'Lobby'}));return;
+  }
+  if(path==='/rooms/'+room+'/ready'){
+   res.writeHead(200,{'Content-Type':'application/json'});
+   res.end(JSON.stringify({account_id:account,is_ready:true}));return;
+  }
+  if(path==='/rooms/'+room){
+   res.writeHead(200,{'Content-Type':'application/json'});
+   res.end(JSON.stringify({id:room,room_code:'ABC234',host_account_id:account,state:'Lobby',members:[]}));return;
+  }
+  if(path==='/rooms/'+room+'/leave'||path==='/rooms/'+room+'/members/'+account+'/kick'||path==='/rooms/'+room+'/disband'){
+   res.writeHead(204);res.end();return;
+  }
+  if(path==='/rooms/join'){
+   res.writeHead(409,{'Content-Type':'application/json'});
+   res.end(JSON.stringify({code:'ROOM_IS_FULL'}));return;
+  }
+  res.writeHead(404);res.end();
+ });
+ const upstreamPort=await listen(backend);
+ t.after(()=>new Promise(resolve=>backend.close(resolve)));
+ const port=await findPort();
+ const child=await startProxy('http://127.0.0.1:'+upstreamPort,port);
+ t.after(()=>{child.kill();});
+ const base='http://127.0.0.1:'+port;
+ const origin='http://localhost:5173';
+ const credentials={Origin:origin,Cookie:'session_token=browser-opaque'};
+ const created=await fetch(base+'/rooms',{method:'POST',headers:credentials});
+ assert.equal(created.status,201);
+ assert.equal(received.at(-1).origin,origin);
+ assert.equal(received.at(-1).cookie,'session_token=browser-opaque');
+ assert.equal(received.at(-1).body,'');
+ assert.equal(created.headers.getSetCookie().length,2);
+ const joined=await fetch(base+'/rooms/join',{
+  method:'POST',headers:{...credentials,'Content-Type':'application/json'},
+  body:JSON.stringify({room_code:'ABC234'})
+ });
+ assert.equal(joined.status,409);
+ assert.equal((await joined.json()).code,'ROOM_IS_FULL');
+ assert.deepEqual(JSON.parse(received.at(-1).body),{room_code:'ABC234'});
+ const ready=await fetch(base+'/rooms/'+room+'/ready',{
+  method:'PUT',headers:{...credentials,'Content-Type':'application/json'},
+  body:JSON.stringify({ready:true})
+ });
+ assert.equal(ready.status,200);
+ assert.equal(received.at(-1).method,'PUT');
+ assert.equal(received.at(-1).origin,origin);
+ assert.equal(received.at(-1).cookie,'session_token=browser-opaque');
+ assert.deepEqual(JSON.parse(received.at(-1).body),{ready:true});
+ const view=await fetch(base+'/rooms/'+room,{headers:{Cookie:'session_token=browser-opaque'}});
+ assert.equal(view.status,200);
+ assert.equal(received.at(-1).method,'GET');
+ assert.equal(received.at(-1).cookie,'session_token=browser-opaque');
+ for(const path of ['/rooms/'+room+'/leave','/rooms/'+room+'/members/'+account+'/kick','/rooms/'+room+'/disband']){
+  const answer=await fetch(base+path,{method:'POST',headers:credentials});
+  assert.equal(answer.status,204);
+  assert.equal(received.at(-1).body,'');
+  assert.equal(received.at(-1).origin,origin);
+ }
+ const count=received.length;
+ const rejected=[
+  ['/rooms/'+room+'/ready','POST',405],
+  ['/rooms/'+room,'PUT',405],
+  ['/rooms/'+room+'/members/'+account+'/kick','DELETE',405],
+  ['/rooms/not-a-uuid','GET',404],
+  ['/rooms/'+room+'/members/not-uuid/kick','POST',404],
+  ['/rooms/'+room+'/other','POST',404],
+  ['/rooms/anything/extra','GET',404],
+  ['/roomsX','POST',405]
+ ];
+ for(const [path,method,status] of rejected){
+  const answer=await fetch(base+path,{method});
+  assert.equal(answer.status,status,method+' '+path);
+ }
+ assert.equal(received.length,count,'Rejected routes must not reach FastAPI');
+ const auth=await fetch(base+'/auth/me',{headers:{Cookie:'session_token=opaque'}});
+ assert.equal(auth.status,401);
+ assert.equal((await auth.json()).code,'INVALID_COOKIE');
+ const oversized=await fetch(base+'/rooms/'+room+'/ready',{
+  method:'PUT',headers:credentials,body:'X'.repeat(65537)
+ });
+ assert.equal(oversized.status,413);
+});
