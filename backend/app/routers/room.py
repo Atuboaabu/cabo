@@ -1,4 +1,5 @@
-from fastapi import APIRouter, status, Path
+from uuid import UUID
+from fastapi import APIRouter, status
 from app.schemas import RoomResponse, RoomJoinRequest, RoomReadyResponse, RoomReadyRequest
 
 from app.depencicies import SessionDep, ActiveUserDep, OriginCheckDep
@@ -60,12 +61,13 @@ def join_room(
 @router.put(
     "/{room_id}/ready",
     status_code=status.HTTP_200_OK,
-    response_model=RoomReadyResponse
+    response_model=RoomReadyResponse,
+    dependencies=[OriginCheckDep]
 )
 def roommember_set_ready(
     session: SessionDep,
     user: ActiveUserDep,
-    room_id: str,
+    room_id: UUID,
     ready_request: RoomReadyRequest
 ):
     room_member = room.set_room_member_ready(
