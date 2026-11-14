@@ -152,12 +152,16 @@ async function restoreRealSession({skipRoomRestore=false}={}){
  realAuthState='checking';render();
  try{
   const account=await createAuthApi().getMe();
+  if(realAccount?.id && realAccount.id!==account.id){
+   realRoomConfirmation=null;
+   realRooms.reset(); // Account switch must not reuse a previous member's Room View.
+  }
   realAccount=account;realAuthState='authenticated';realAuthError='';screen='real-account';
   if(!skipRoomRestore)await realRooms.restore();
  }catch(error){
   realAccount=null;screen='auth';authMode='login';
   if(error.status===401){
-   realAuthState='anonymous';realAuthError='';realRooms.reset();
+   realAuthState='anonymous';realAuthError='';realRoomConfirmation=null;realRooms.reset();
   }else{
    realAuthState='unavailable';
    realAuthError=error.message||'认证服务暂不可用，无法确认当前会话。';
@@ -174,6 +178,7 @@ async function submitRealLogin(form,data){
  showFormFeedback(feedback,'正在登录…','info');
  try{
   const account=await createAuthApi().login({email:data.email,password:data.password});
+  if(realAccount?.id && realAccount.id!==account.id){realRoomConfirmation=null;realRooms.reset();}
   realAccount=account;
   realAuthState='authenticated';
   realAuthError='';
