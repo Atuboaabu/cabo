@@ -1,6 +1,6 @@
 /**
  * CABO frontend-only development server.
- * Serves files on :5173 and proxies only explicitly allowed auth routes to
+ * Serves files on :5173 and proxies explicitly allowlisted Auth/Room routes to
  * FastAPI (:8000 by default). Cookie headers are relayed without parsing.
  * Never prints request bodies, passwords or verification codes.
  */
@@ -25,6 +25,20 @@ const routes = new Map([
   ['/auth/logout', 'POST'],
   ['/auth/refresh', 'POST']
 ]);
+// Exact Room API route shapes; do not permit arbitrary /rooms/* forwarding.
+const UUID_PART = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+const roomRoutes = [
+  ['POST', /^\/rooms$/],
+  ['POST', /^\/rooms\/join$/],
+  ['GET', new RegExp('^/rooms/'+UUID_PART+'$','i')],
+  ['PUT', new RegExp('^/rooms/'+UUID_PART+'/ready$','i')],
+  ['POST', new RegExp('^/rooms/'+UUID_PART+'/leave$','i')],
+  ['POST', new RegExp('^/rooms/'+UUID_PART+'/members/'+UUID_PART+'/kick$','i')],
+  ['POST', new RegExp('^/rooms/'+UUID_PART+'/disband$','i')]
+];
+export function allowedProxyMethod(path) {
+  return routes.get(path)||roomRoutes.find(([,rule])=>rule.test(path))?.[0]||null;
+}
 const mime = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -41,17 +55,16 @@ const server = createServer(async (req, res) => {
   let path;
   try { path = new URL(req.url, 'http://localhost').pathname; }
   catch { fail(res, 400, 'Invalid path'); return; }
-  if (routes.has(path)) {
-    const allowedMethod=routes.get(path);
+  const allowedMethod=allowedProxyMethod(path);
+  if (allowedMethod) {
     if (req.method !== allowedMethod) { fail(res, 405, allowedMethod+' required'); return; }
     const headers = { Accept: 'application/json' };
     if (req.headers.cookie) headers.Cookie = req.headers.cookie;
     // Pass through the real browser Origin for state-changing requests.
     // Missing Origin is intentionally left missing for backend validation.
-    if (allowedMethod === 'POST' && req.headers.origin) headers.Origin = req.headers.origin;
+    if (['POST','PUT'].includes(allowedMethod) && req.headers.origin) headers.Origin = req.headers.origin;
     let body;
-    if (allowedMethod === 'POST') {
-      headers['Content-Type'] = 'application/json';
+    if (['POST','PUT'].includes(allowedMethod)) {
       const chunks=[];
       let size=0, oversized=false;
       for await (const part of req) {
@@ -62,7 +75,10 @@ const server = createServer(async (req, res) => {
         chunks.push(part);
       }
       if(oversized){fail(res,413,'Request too large');return;}
-      body=Buffer.concat(chunks);
+      if(chunks.length){
+        body=Buffer.concat(chunks);
+        headers['Content-Type']='application/json';
+      }
     }
     try {
       const upstream=await fetch(new URL(path,backend),{
@@ -89,6 +105,10 @@ const server = createServer(async (req, res) => {
     }
     return;
   }
+  // Rejected Room paths cannot fall through to static-file serving.
+  if(path==='/rooms'||path.startsWith('/rooms/')){
+    fail(res,404,'Room API route not found');return;
+  }
   if (!['GET','HEAD'].includes(req.method)) { fail(res,405,'GET required');return; }
   let relative;
   try { relative=decodeURIComponent(path==='/'?'/index.html':path); }
@@ -110,4 +130,4 @@ const server = createServer(async (req, res) => {
     res.end(req.method==='HEAD'?undefined:bytes);
   } catch { fail(res,404,'Not found'); }
 });
-server.listen(port, '127.0.0.1',()=>console.info(`CABO frontend: http://localhost:${port} (auth proxy -> ${backend.origin})`));
+server.listen(port, '127.0.0.1',()=>console.info(`CABO frontend: http://localhost:${port} (Auth/Room proxy -> ${backend.origin})`));
