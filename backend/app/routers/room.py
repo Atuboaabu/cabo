@@ -97,3 +97,21 @@ def roommember_leave(
         user,
         room_id
     )
+
+@router.post(
+    "/{room_id}/members/{target_account_id}/kick",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[OriginCheckDep]
+)
+def roommember_leave(
+    session: SessionDep,
+    user: ActiveUserDep,
+    room_id: UUID,
+    target_account_id: UUID
+):
+    room.kick_room_member(
+        session,
+        user,
+        room_id,
+        target_account_id
+    )

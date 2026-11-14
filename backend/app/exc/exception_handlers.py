@@ -224,3 +224,16 @@ def register_exception_handlers(app: FastAPI)->None:
                 "detail": "The request is invalid" 
             }
         )
+
+    @app.exception_handler(exceptions.TargetMemberNotExistException)
+    async def invalid_request_handle(
+        request: Request,
+        exc: exceptions.TargetMemberNotExistException
+    ):
+        return JSONResponse(
+            status_code = status.HTTP_404_NOT_FOUND,
+            content = {
+                "code": "TARGET_MEMBER_NOT_EXIST",
+                "detail": "The target member not exist" 
+            }
+        )

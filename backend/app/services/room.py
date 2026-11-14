@@ -224,3 +224,53 @@ def leave_room(
     except Exception:
         session.rollback()
         raise
+
+def kick_room_member(
+    session: Session,
+    host_user: UserAccount,
+    room_id: UUID,
+    target_account_id: UUID
+)->None:
+    try:
+        room = session.execute(
+            select(Room).where(
+                Room.id == room_id
+            ).with_for_update()
+        ).scalar_one_or_none()
+
+        if room is None:
+            raise exceptions.RoomNotExistException()
+
+        if room.state != "Lobby":
+            raise exceptions.RoomStateNotLobbyException()
+
+        if room.host_account_id != host_user.id:
+            raise exceptions.RequesterWrongException()
+
+        if host_user.id == target_account_id:
+            raise exceptions.InvalidRequestException()
+
+        room_member = session.execute(
+            select(RoomMember).where(
+                RoomMember.room_id == room.id,
+                RoomMember.account_id == target_account_id,
+                RoomMember.left_at.is_(None)
+            )
+        ).scalar_one_or_none()
+        if room_member is None:
+            raise exceptions.TargetMemberNotExistException()
+
+        session.execute(
+            update(RoomMember).where(
+                RoomMember.room_id == room.id,
+                RoomMember.account_id == target_account_id,
+                RoomMember.left_at.is_(None)
+            ).values(
+                left_at = func.now()
+            )
+        )
+
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise

@@ -53,3 +53,6 @@ class RequesterWrongException(Exception):
 
 class InvalidRequestException(Exception):
     pass
+
+class TargetMemberNotExistException(Exception):
+    pass
