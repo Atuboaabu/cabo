@@ -19,7 +19,7 @@ test('non-Host Ready / Unready writes boolean and waits for authoritative GET',a
  const calls=[];let current=false,finish;
  const {rooms}=setup({api:{
   async setReady(room,ready){calls.push(['PUT',room,ready]);current=ready;return {account_id:guest,is_ready:ready};},
-  async getRoom(room){calls.push(['GET',room]);return new Promise(resolve=>finish=()=>resolve({...lobby,members:[hostMember,{...guestMember,is_ready:current}]});}
+  async getRoom(room){calls.push(['GET',room]);return new Promise(resolve=>{finish=()=>resolve({...lobby,members:[hostMember,{...guestMember,is_ready:current}]});});}
  }});
  const first=rooms.setReady(true);
  await Promise.resolve();await Promise.resolve();
