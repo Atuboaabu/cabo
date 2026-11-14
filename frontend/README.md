@@ -117,9 +117,9 @@ The signup field is now simply labeled **昵称** with the placeholder **设置�
 
 Run `npm run check && npm test && npm run build` for frontend-only checks. Automated tests include isolated HTTP client semantics and a local fake-FastAPI proxy test; they cannot prove a production Cookie/Secure/Origin configuration without a real browser and backend.
 
-## Phase 6-6-A · Real Room HTTP client (UI not yet integrated)
+## Phase 6-6-A · Real Room HTTP client
 
-`src/room-api.js` exposes `createRoomApi({baseUrl?,fetchImpl?})`. It reuses the existing `getAuthApiBaseUrl()` configuration and browser-owned HttpOnly Session cookies (`credentials: 'include'`), but is **not imported into `app.js`**. The existing Room/Game UI remains a separate local Mock demonstration. No real Account is assigned to a Mock player.
+`src/room-api.js` exposes `createRoomApi({baseUrl?,fetchImpl?})`. It reuses the existing `getAuthApiBaseUrl()` configuration and browser-owned HttpOnly Session cookies (`credentials: 'include'`), and is now used by the **separate real Room interface** in `app.js` (Phase 6-6-B). The original Room/Game Mock interface remains an independent local demonstration. No real Account is assigned to a Mock player.
 
 | Client method | HTTP method / path | Expected |
 | --- | --- | --- |
@@ -135,7 +135,7 @@ The client verifies exact HTTP success status and required public response shape
 
 The dev server forwards **only** these seven exact Room route shapes alongside the existing Auth allowlist. Dynamic `room_id` and `target_account_id` must match the canonical hyphenated UUID text pattern; other `/rooms/` paths never reach FastAPI. Both POST and PUT forward the actual browser `Origin`, and requests with cookies forward the browser `Cookie`. The proxy supports JSON bodies where supplied, correctly forwards multiple `Set-Cookie` values and the upstream HTTP code/body, and retains the 64 KiB request cap and 15-second timeout. `CABO_BACKEND_URL` continues to select FastAPI's origin.
 
-To check Phase 6-6-A independently (no Room UI yet), start FastAPI and the frontend dev server, then import the module from a temporary browser console or a development-only ES module:
+To check Phase 6-6-A independently of the real Room UI, start FastAPI and the frontend dev server, then import the module from a temporary browser console or a development-only ES module:
 
 ```js
 import {createRoomApi} from '/src/room-api.js';
@@ -146,3 +146,26 @@ const created=await rooms.createRoom();
 ```
 
 The browser must already have a valid Auth Session, and FastAPI must trust the real browser Origin. Run `npm run check && npm test && npm run build` under `frontend/`; the new unit and proxy integration tests do not require a live PostgreSQL server. End-to-end server permission and concurrent Room business rules still require separate backend/browser testing.
+
+## Phase 6-6-B · Real Create / Join / authoritative read-only Room View
+
+After real FastAPI authentication, the account page now offers **创建房间** and a **six-character room code** Join form. The frontend normalizes the code to uppercase before `joinRoom(roomCode)`; it accepts only the backend's alphabet `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`. Successful Create (201) / Join (200) returns a server-issued Room ID, which is then passed to `getRoom(id)`. Only a successful authoritative GET displays Room members. A pending or failed GET never invents a host, seat or Ready flag.
+
+The real Room view displays the returned code, state, host account ID, member count, and all member usernames, **server-supplied** `seat_index`, `is_host` and `is_ready`, sorted by `seat_index`. The "你" marker compares `member.account_id` with the authenticated `realAccount.id`; it never substitutes `demo-me`. **刷新房间** performs an explicit GET: there is no automatic polling or WebSocket.
+
+**Room navigation recovery:** the only persisted value is `sessionStorage['cabo.lastRealRoomId']`, a non-authoritative UUID locator. After `GET /auth/me` returns 200, the frontend reads this UUID and re-checks access using `GET /rooms/{id}` before displaying members. When GET returns 403 or 404 it clears that UUID and returns to the Create/Join entrance. A network error or 5xx retains the UUID for manual refresh and does not imply the Room was deleted; a previously visible Room View is marked stale. Confirmed logout (204 or expired session 401) clears the locator and in-memory Room state. Pending responses are invalidated on reset, so a late GET or Create response cannot restore state after logout. SessionStorage may be disabled: in that case Create/Join still works within the current page but navigation will not survive a reload.
+
+For a Create/Join network failure (`RoomApiError.outcomeUnknown`) the UI **never retries a write automatically** or invents a Room ID. It disables repeated Create/Join and explicitly warns that the operation might have committed. It provides **重新验证登录状态**, but this is not a Room discovery endpoint: without a Room ID in the response and without a backend "my room" query, an indeterminate Create cannot be reliably located. When the server returned a Room ID but the subsequent GET failed, the UUID remains available and the user can retry the read-only GET. A Room GET 401 triggers a separate `/auth/me` revalidation instead of trusting the old Room display.
+
+**Phase 6-6-B deliberately does not include** real Ready, Leave, Kick, Disband, Start Game, WebSocket or gameplay. The original `MockGateway` and its demo interface have not been modified, and real accounts never enter Mock rooms.
+
+### Manual two-account acceptance
+
+1. Run FastAPI/PostgreSQL and the frontend dev proxy. Use two independent browser sessions with valid HttpOnly cookies for two verified accounts.
+2. Account A: click **创建房间**; verify POST `/rooms` returns 201 followed by GET `/rooms/{id}` 200. Copy the displayed six-character `room_code`.
+3. Account B: enter that code (lowercase is accepted) and click **加入房间**. Verify POST `/rooms/join` 200 followed by GET 200. Both accounts click **刷新房间** to see both authoritative members.
+4. Reload both tabs. Check that `/auth/me` restores each real identity and that `/rooms/{id}` revalidates membership from the stored UUID locator; verify Member/Host/Ready fields.
+5. Test invalid code, 403/404 (navigation cleared), 409, 422, 5xx and network disruption (navigation retained or write uncertain as applicable). Confirm the independent **进入本地 Mock 演示** button does not transfer the real account to the demo game.
+6. From the real account UI, log out and confirm the Room UUID locator is removed. Verify a delayed response cannot recreate the logged-out Room view.
+
+Run `cd frontend && npm run check && npm test && npm run build`. Automated tests simulate the state and API but cannot replace real two-account browser and database integration.
