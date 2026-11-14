@@ -24,3 +24,10 @@ class RoomJoinRequest(BaseModel):
             raise ValueError("房间码必须是字符串")
 
         return value.upper()
+
+class RoomReadyRequest(BaseModel):
+    ready: bool
+
+class RoomReadyResponse(BaseModel):
+    account_id: uuid.UUID
+    is_ready: bool

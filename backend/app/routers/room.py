@@ -1,5 +1,5 @@
-from fastapi import APIRouter, status
-from app.schemas import RoomResponse, RoomJoinRequest
+from fastapi import APIRouter, status, Path
+from app.schemas import RoomResponse, RoomJoinRequest, RoomReadyResponse, RoomReadyRequest
 
 from app.depencicies import SessionDep, ActiveUserDep, OriginCheckDep
 from app.services import room
@@ -55,4 +55,27 @@ def join_room(
         room_code=room_info.room_code,
         host_account_id=room_info.host_account_id,
         state=room_info.state
+    )
+
+@router.put(
+    "/{room_id}/ready",
+    status_code=status.HTTP_200_OK,
+    response_model=RoomReadyResponse
+)
+def roommember_set_ready(
+    session: SessionDep,
+    user: ActiveUserDep,
+    room_id: str,
+    ready_request: RoomReadyRequest
+):
+    room_member = room.set_room_member_ready(
+        session,
+        user,
+        room_id,
+        ready_request.ready
+    )
+
+    return RoomReadyResponse(
+        account_id=room_member.account_id,
+        is_ready=room_member.is_ready
     )
