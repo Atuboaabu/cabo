@@ -97,7 +97,7 @@ test('unexpected JSON schema fails with INVALID_RESPONSE (writes unknown)',async
 test('path IDs reject malformed values before making a request',async()=>{
  let called=0;
  const api=createRoomApi({fetchImpl:async()=>{called++;return response(204);}});
- await assert.rejects(api.leaveRoom('../../auth/logout'),err=>err.code==='INVALID_ID');
- await assert.rejects(api.kickMember(roomId,'not-a-uuid'),err=>err.code==='INVALID_ID');
+ assert.throws(()=>api.leaveRoom('../../auth/logout'),err=>err.code==='INVALID_ID');
+ assert.throws(()=>api.kickMember(roomId,'not-a-uuid'),err=>err.code==='INVALID_ID');
  assert.equal(called,0);
 });
