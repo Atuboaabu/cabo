@@ -37,7 +37,7 @@ function realRoomPanel(){
   const r=room.view,members=r?[...r.members].sort((a,b)=>a.seat_index-b.seat_index):[];
   const me=r?.members.find(m=>m.account_id===realAccount.id);
   const lobby=r?.state==='Lobby'&&!!me;
-  const locked=waiting||room.stale||room.outcomeUnknown;
+  const locked=waiting||room.stale||room.outcomeUnknown||realBusy;
   const lobbyActions=lobby?'<div class="real-lobby-actions">'
    +(!me.is_host?'<button type="button" class="primary" data-action="realRoomReady" '+(locked?'disabled':'')+'>'+(me.is_ready?'取消准备':'准备')+'</button>':'')
    +'<button type="button" class="outline" data-action="realRoomLeave" '+(locked?'disabled':'')+'>离开房间</button>'
@@ -279,7 +279,7 @@ async function submitRealRegistration(form,data){
 }
 function confirmRealRoom(action,targetAccountId){
  const r=realRooms.state;
- if(!r.view||r.pending||r.stale||r.outcomeUnknown||r.view.state!=='Lobby'||!realAccount)return;
+ if(!r.view||r.pending||r.stale||r.outcomeUnknown||realBusy||r.view.state!=='Lobby'||!realAccount)return;
  if(!realRooms.allowedMutation(action,targetAccountId))return;
  const me=r.view.members.find(m=>m.account_id===realAccount.id);
  if(!me)return;
@@ -306,7 +306,7 @@ function approveRealRoom(){
  const c=realRoomConfirmation;
  realRoomConfirmation=null;
  if(!c||c.roomId!==realRooms.state.roomId||realAuthState!=='authenticated'||
-    screen!=='real-account'||!realRooms.allowedMutation(c.action,c.targetAccountId)){render();return;}
+    screen!=='real-account'||realBusy||!realRooms.allowedMutation(c.action,c.targetAccountId)){render();return;}
  render();
  if(c.action==='leave')realRooms.leaveRoom();
  if(c.action==='kick')realRooms.kickMember(c.targetAccountId);
@@ -328,7 +328,7 @@ root.addEventListener('click',e=>{
  if(a==='realRoomApprove'){approveRealRoom();return;}
  if(a==='realRoomReady'&&realAuthState==='authenticated'&&screen==='real-account'){
   const me=realRooms.state.view?.members.find(m=>m.account_id===realAccount.id);
-  if(me&&realRooms.allowedMutation('ready'))realRooms.setReady(!me.is_ready);
+  if(me&&!realBusy&&realRooms.allowedMutation('ready'))realRooms.setReady(!me.is_ready);
   return;
  }
  if(a==='realRoomLeave'&&realAuthState==='authenticated'&&screen==='real-account'){confirmRealRoom('leave');return;}
