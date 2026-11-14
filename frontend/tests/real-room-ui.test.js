@@ -172,3 +172,109 @@ test('delegated Join form sends normalized backend code',async()=>{
  assert.equal(ui.mockSends(),0);
  assert.match(ui.root.innerHTML,/房间码/);
 });
+
+function clickReal(ui,action){
+ ui.events.click({target:{closest(selector){
+  if(selector==='[data-auth]')return null;
+  if(selector==='[data-action]')return {disabled:false,dataset:{action}};
+  return null;
+ }}});
+}
+test('Host controls: no Ready, can Kick others and Disband, Leave warns room will dissolve',async()=>{
+ const calls=[];const ui=boot({storedId:id,roomApi:{
+  async getRoom(){return {...baseRoom,members};},
+  async kickMember(room,member){calls.push(['kick',room,member]);return null;},
+  async leaveRoom(room){calls.push(['leave',room]);return null;},
+  async disbandRoom(room){calls.push(['disband',room]);return null;}
+ }});
+ await flush();
+ const html=ui.root.innerHTML;
+ assert.doesNotMatch(html,/data-action="realRoomReady"/);
+ assert.match(html,/data-action="realRoomKick:123e4567-e89b-12d3-a456-426614174002"/);
+ assert.doesNotMatch(html,/data-action="realRoomKick:123e4567-e89b-12d3-a456-426614174001"/);
+ assert.match(html,/data-action="realRoomDisband"/);
+ clickReal(ui,'realRoomLeave');
+ assert.match(ui.root.innerHTML,/你是房主，离开将解散整个房间，所有成员都会退出。确定继续吗？/);
+ assert.deepEqual(calls,[]);
+ clickReal(ui,'realRoomCancel');
+ assert.doesNotMatch(ui.root.innerHTML,/real-room-modal-title/);
+ clickReal(ui,'realRoomKick:123e4567-e89b-12d3-a456-426614174002');
+ assert.match(ui.root.innerHTML,/确定将「Bob」踢出当前房间吗？/);
+ clickReal(ui,'realRoomApprove');
+ await flush();
+ assert.deepEqual(calls,[['kick',id,members[0].account_id]]);
+ assert.equal(ui.mockSends(),0);
+});
+test('Guest controls: Ready/Unready and Leave, never Kick or Disband',async()=>{
+ const guest=members[0].account_id;
+ const own={id:guest,username:'Bob',email:'bob@example.com'};
+ let readyValue;
+ const ui=boot({me:own,storedId:id,roomApi:{
+  async getRoom(){return {...baseRoom,members};},
+  async setReady(room,ready){readyValue=ready;return {account_id:guest,is_ready:ready};},
+  async leaveRoom(){return null;}
+ }});
+ await flush();
+ let html=ui.root.innerHTML;
+ assert.match(html,/data-action="realRoomReady"/);
+ assert.match(html,/取消准备/);
+ assert.doesNotMatch(html,/data-action="realRoomKick:/);
+ assert.doesNotMatch(html,/data-action="realRoomDisband"/);
+ clickReal(ui,'realRoomReady');
+ await flush();
+ assert.equal(readyValue,false);
+ clickReal(ui,'realRoomLeave');
+ assert.match(ui.root.innerHTML,/确定离开当前房间吗？/);
+ clickReal(ui,'realRoomApprove');
+ await flush();
+ assert.equal(ui.rooms.state.roomId,null);
+ assert.equal(ui.store.getItem('cabo.lastRealRoomId'),null);
+ assert.equal(ui.mockSends(),0);
+});
+test('Disband requires confirmation and 204 returns to real Room entry',async()=>{
+ let count=0;
+ const ui=boot({storedId:id,roomApi:{
+  getRoom:async()=>({...baseRoom,members}),
+  disbandRoom:async()=>{count++;return null;}
+ }});
+ await flush();
+ clickReal(ui,'realRoomDisband');
+ assert.match(ui.root.innerHTML,/解散后房间将关闭，所有成员退出，无法恢复。确定解散吗？/);
+ assert.equal(count,0);
+ clickReal(ui,'realRoomApprove');
+ await flush();
+ assert.equal(count,1);
+ assert.equal(ui.rooms.state.roomId,null);
+ assert.match(ui.root.innerHTML,/创建房间/);
+ assert.equal(ui.mockSends(),0);
+});
+test('non-Lobby view never renders executable write actions',async()=>{
+ const ui=boot({storedId:id,roomApi:{
+  getRoom:async()=>({...baseRoom,state:'Playing',members})
+ }});
+ await flush();
+ for(const action of ['realRoomReady','realRoomLeave','realRoomKick:','realRoomDisband']){
+  assert.doesNotMatch(ui.root.innerHTML,new RegExp('data-action="'+action));
+ }
+});
+
+test('in-flight real Lobby mutation disables all conflicting controls',async()=>{
+ let finish;
+ const pending=new Promise(resolve=>finish=resolve);
+ const ui=boot({storedId:id,roomApi:{
+  getRoom:async()=>({...baseRoom,members}),
+  kickMember:async()=>pending
+ }});
+ await flush();
+ clickReal(ui,'realRoomKick:'+members[0].account_id);
+ clickReal(ui,'realRoomApprove');
+ await flush();
+ const html=ui.root.innerHTML;
+ assert.match(html,/正在踢出成员/);
+ assert.match(html,/data-action="realRoomLeave" disabled/);
+ assert.match(html,/data-action="realRoomDisband" disabled/);
+ assert.match(html,/data-action="realRoomKick:[^"]+" disabled/);
+ finish(null);
+ await flush();
+ assert.equal(ui.mockSends(),0);
+});

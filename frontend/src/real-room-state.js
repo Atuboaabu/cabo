@@ -7,7 +7,7 @@ const KEY='cabo.lastRealRoomId';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ROOM_CODE=/^[A-HJ-NP-Z2-9]{6}$/;
 
-export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthorized=()=>{}}) {
+export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthorized=()=>{},getAccountId=()=>null}={}) {
   const state={
     roomId:null,view:null,pending:null,error:'',outcomeUnknown:false,
     joinCode:'',stale:false
@@ -40,14 +40,18 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
     state.error=error?.message||'房间请求未完成，请稍后重试。';
     if(error?.outcomeUnknown && kind!=='read'){
       state.outcomeUnknown=true;
-      state.error+=' 请先从其他已登录页面确认房间状态，勿直接重复创建或加入。';
+      state.error+=kind==='mutation'
+        ? ' 操作结果尚不能确认，请刷新房间，勿重复提交。'
+        : ' 请先从其他已登录页面确认房间状态，勿直接重复创建或加入。';
     }
-    if(error?.status===403 || error?.status===404){
-      // Authorization/room invalidation cannot be inferred from a stale view.
+    if((error?.status===403 || error?.status===404) && kind!=='mutation'){
+      // An authoritative GET may revoke the current Room locator.
       save(null);state.roomId=null;state.view=null;state.stale=false;
-    }else if(kind==='read'){
-      // Network errors do not prove the room is gone; retained data is stale.
+    }else if(kind==='read'||kind==='mutation'){
+      // Mutation conflicts / network uncertainty require a fresh GET before
+      // any more writes. A kick-target 404 does not invalidate the whole Room.
       state.stale=!!state.view;
+      if(kind==='mutation' && error?.status===404)state.error+=' 请刷新房间查看最新成员。';
       if(error?.status===401)state.view=null;
     }
     if(error?.status===401)Promise.resolve().then(onUnauthorized).catch(()=>{});
@@ -115,5 +119,72 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
   async function refresh(){
     return state.roomId?readRoom(state.roomId):false;
   }
-  return {state,reset,setJoinCode,createRoom,joinRoom,restore,refresh};
+  function authorizedMember(){
+    if(!state.roomId||!state.view||state.view.state!=='Lobby'||
+       state.pending||state.stale||state.outcomeUnknown)return null;
+    const id=getAccountId();
+    return id ? state.view.members.find(member=>member.account_id===id)||null : null;
+  }
+  function allowedMutation(action,targetAccountId){
+    const me=authorizedMember();
+    if(!me)return false;
+    if(action==='ready')return !me.is_host;
+    if(action==='leave')return true;
+    if(action==='disband')return me.is_host;
+    if(action==='kick')return me.is_host&&targetAccountId!==me.account_id&&
+      state.view.members.some(member=>member.account_id===targetAccountId&&!member.is_host);
+    return false;
+  }
+  async function mutate(action,payload) {
+    const target=payload?.targetAccountId;
+    if(!allowedMutation(action,target))return false;
+    const id=state.roomId, token=generation;
+    state.pending=action;
+    state.error='';
+    emit();
+    try{
+      if(action==='ready')await api.setReady(id,payload.ready);
+      else if(action==='leave')await api.leaveRoom(id);
+      else if(action==='kick')await api.kickMember(id,target);
+      else if(action==='disband')await api.disbandRoom(id);
+      if(token!==generation)return false;
+      if(action==='leave'||action==='disband'){
+        // Only a confirmed 204 clears the Room locator; Session stays intact.
+        reset();
+        return true;
+      }
+      state.pending='read';emit();
+      try{
+        const latest=await api.getRoom(id);
+        if(token!==generation)return false;
+        if(latest.id.toLowerCase()!==id.toLowerCase())throw Error('服务端返回的房间 ID 不一致，请刷新房间。');
+        state.view=latest;
+        state.stale=false;
+        state.outcomeUnknown=false;
+        state.error='';
+        return true;
+      }catch(error){
+        if(token!==generation)return false;
+        failure(error,'read');
+        // The write was acknowledged; never tell users it failed and invite
+        // an unsafe duplicate write. 403/404 read failures may revoke access.
+        state.error='操作可能已完成，但暂时无法确认最新房间状态，请刷新房间。';
+        return false;
+      }
+    }catch(error){
+      if(token===generation)failure(error,'mutation');
+      return false;
+    }finally{
+      if(token===generation){state.pending=null;emit();}
+    }
+  }
+  async function setReady(ready){
+    const me=authorizedMember();
+    if(!me||me.is_host||typeof ready!=='boolean'||ready===me.is_ready)return false;
+    return mutate('ready',{ready});
+  }
+  async function leaveRoom(){return mutate('leave');}
+  async function kickMember(targetAccountId){return mutate('kick',{targetAccountId});}
+  async function disbandRoom(){return mutate('disband');}
+  return {state,reset,setJoinCode,createRoom,joinRoom,restore,refresh,setReady,leaveRoom,kickMember,disbandRoom,allowedMutation};
 }
