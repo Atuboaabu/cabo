@@ -60,7 +60,7 @@ def join_room(
 
 @router.put(
     "/{room_id}/ready",
-    status_code=status.HTTP_200_OK,
+    status_code=status.HTTP_204_NO_CONTENT,
     response_model=RoomReadyResponse,
     dependencies=[OriginCheckDep]
 )

@@ -189,21 +189,35 @@ def leave_room(
         if room.state != "Lobby":
             raise exceptions.RoomStateNotLobbyException()
 
-        if user_account.id == room.host_account_id:
-            update(RoomMember).where(
-                RoomMember.room_id == room.id,
-                RoomMember.left_at.is_(None)
-            ).values(
-                left_at = func.now()
-            )
-            room.state = "Closed"
-        else:
-            update(RoomMember).where(
+        room_member = session.execute(
+            select(RoomMember).where(
                 RoomMember.room_id == room.id,
                 RoomMember.account_id == user_account.id,
                 RoomMember.left_at.is_(None)
-            ).values(
-                left_at = func.now()
+            )
+        ).scalar_one_or_none()
+        if room_member is None:
+            raise exceptions.RequesterWrongException()
+
+        if user_account.id == room.host_account_id:
+            session.execute(
+                update(RoomMember).where(
+                    RoomMember.room_id == room.id,
+                    RoomMember.left_at.is_(None)
+                ).values(
+                    left_at = func.now()
+                )
+            )
+            room.state = "Closed"
+        else:
+            session.execute(
+                update(RoomMember).where(
+                    RoomMember.room_id == room.id,
+                    RoomMember.account_id == user_account.id,
+                    RoomMember.left_at.is_(None)
+                ).values(
+                    left_at = func.now()
+                )
             )
 
         session.commit()
