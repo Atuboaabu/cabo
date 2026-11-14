@@ -132,7 +132,7 @@ test('Reset clears only the Room locator, and Mock gateway remains independent',
  assert.equal(rooms.state.roomId,null);
  assert.equal(rooms.state.view,null);
  const app=readFileSync(new URL('../src/app.js',import.meta.url),'utf8');
- assert.match(app,/member\.account_id===realAccount\.id/);
+ assert.match(app,/m\.account_id===realAccount\.id/);
  assert.match(app,/\[\.\.\.r\.members\]\.sort\(\(a,b\)=>a\.seat_index-b\.seat_index\)/);
  assert.match(app,/realRooms\.createRoom\(\)/);
  assert.match(app,/realRooms\.joinRoom\(\)/);
