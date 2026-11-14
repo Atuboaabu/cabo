@@ -115,3 +115,28 @@
   color:#78352d;
   font:600 13px/1.6 system-ui,sans-serif;
 }
+
+/* Phase 6-6-B · real Room overview, visually separate from Mock lobby. */
+.real-room-area{margin:28px auto 0;max-width:1080px}
+.real-room-area>.section-heading{display:flex;align-items:center;justify-content:space-between;gap:14px}
+.real-room-area h2{font-size:clamp(23px,3vw,30px);margin-bottom:18px;color:#204830}
+.real-room-area .section-heading h2{margin:0}
+.real-room-area .lobby-grid{margin-top:18px}
+.real-room-area .paper-card h3{color:#234832;margin-bottom:12px}
+.real-room-code{font-size:clamp(25px,4vw,38px);letter-spacing:.12em;color:#1e4b30}
+.real-room-card{margin-top:16px}
+.real-room-card .room-summary{display:flex;flex-wrap:wrap;gap:18px;justify-content:space-between;border-bottom:1px solid #d4ba8a;padding-bottom:18px;margin-bottom:14px}
+.real-room-card .room-summary>div{display:flex;flex-direction:column;gap:7px}
+.real-room-card .room-summary>div>span:not(.eyebrow){font-size:13px;color:#78623d}
+.real-room-card .member-list{margin-top:16px}
+.real-room-card .member{min-height:68px}
+.real-room-card .member-meta{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:7px}
+.real-room-area .real-room-feedback{padding:12px 14px;margin:12px 0;border-radius:10px;font:600 13px/1.55 system-ui,sans-serif}
+.real-room-area .real-room-feedback[data-tone="error"]{color:#78352d;background:#f9e7e1;border:1px solid #bd8577;border-left:4px solid #a65244}
+.real-room-area .real-room-feedback[data-tone="info"]{color:#6a532d;background:#f3ead5;border:1px solid #ceb88a}
+.real-room-area input[name="roomCode"]{font:700 21px/1.3 system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase}
+@media(max-width:650px){
+ .real-room-card .room-summary{gap:13px}
+ .real-room-card .member-meta{justify-content:flex-start}
+ .real-room-area>.section-heading{align-items:flex-start}
+}
