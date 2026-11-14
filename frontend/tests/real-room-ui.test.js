@@ -138,3 +138,37 @@ test('uncertain Create offers revalidation but never auto-retries the write',asy
  assert.doesNotMatch(ui.root.innerHTML,/data-action="realRoomCreate"/);
  assert.equal(ui.rooms.state.roomId,null);
 });
+
+test('delegated Create click invokes real Room client, not Mock command',async()=>{
+ let created=0;
+ const ui=boot({roomApi:{
+  async createRoom(){created++;return baseRoom;},
+  async getRoom(){return {...baseRoom,members};}
+ }});
+ await flush();
+ ui.events.click({target:{closest(selector){
+  if(selector==='[data-auth]')return null;
+  if(selector==='[data-action]')return {disabled:false,dataset:{action:'realRoomCreate'}};
+  return null;
+ }}});
+ await flush();
+ assert.equal(created,1);
+ assert.equal(ui.mockSends(),0);
+ assert.match(ui.root.innerHTML,/成员与座位/);
+});
+test('delegated Join form sends normalized backend code',async()=>{
+ let joined=null;
+ const ui=boot({roomApi:{
+  async joinRoom(code){joined=code;return baseRoom;},
+  async getRoom(){return {...baseRoom,members};}
+ }});
+ await flush();
+ ui.events.submit({
+  preventDefault(){},
+  target:{id:'real-room-join-form',fields:{roomCode:'abc234'}}
+ });
+ await flush();
+ assert.equal(joined,'ABC234');
+ assert.equal(ui.mockSends(),0);
+ assert.match(ui.root.innerHTML,/房间码/);
+});
