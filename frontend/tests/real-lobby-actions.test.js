@@ -148,3 +148,25 @@ test('Reset/logout invalidates in-flight mutation and subsequent read response',
  assert.equal(rooms.state.view,null);
  assert.equal(storage.getItem('cabo.lastRealRoomId'),null);
 });
+
+test('acknowledged Ready/Kick followed by 403/404 clears Room and never suggests an impossible refresh',async()=>{
+ for(const status of [403,404]){
+  for(const action of ['ready','kick']){
+   const {rooms,storage}=setup({
+    identity:action==='kick'?host:guest,
+    api:{
+     async setReady(){return {account_id:guest,is_ready:true};},
+     async kickMember(){return null;},
+     async getRoom(){throw fail(status);}
+    }
+   });
+   const success=await (action==='ready'?rooms.setReady(true):rooms.kickMember(guest));
+   assert.equal(success,false);
+   assert.equal(rooms.state.roomId,null);
+   assert.equal(rooms.state.view,null);
+   assert.equal(storage.getItem('cabo.lastRealRoomId'),null);
+   assert.match(rooms.state.error,/房间已无法访问/);
+   assert.doesNotMatch(rooms.state.error,/请刷新房间/);
+  }
+ }
+});
