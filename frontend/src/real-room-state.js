@@ -166,9 +166,12 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
       }catch(error){
         if(token!==generation)return false;
         failure(error,'read');
-        // The write was acknowledged; never tell users it failed and invite
-        // an unsafe duplicate write. 403/404 read failures may revoke access.
-        state.error='操作可能已完成，但暂时无法确认最新房间状态，请刷新房间。';
+        // A confirmed write followed by an authoritative 403/404 means the
+        // Room locator has been invalidated. No Room ID remains to refresh.
+        // For transient GET failures retain the locator and offer read-only retry.
+        state.error=(error?.status===403||error?.status===404)
+          ? '操作已获服务器受理，但当前房间已无法访问，请返回房间入口。'
+          : '操作可能已完成，但暂时无法确认最新房间状态，请刷新房间。';
         return false;
       }
     }catch(error){
