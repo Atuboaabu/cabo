@@ -157,7 +157,7 @@ The real Room view displays the returned code, state, host account ID, member co
 
 For a Create/Join network failure (`RoomApiError.outcomeUnknown`) the UI **never retries a write automatically** or invents a Room ID. It disables repeated Create/Join and explicitly warns that the operation might have committed. It provides **重新验证登录状态**, but this is not a Room discovery endpoint: without a Room ID in the response and without a backend "my room" query, an indeterminate Create cannot be reliably located. When the server returned a Room ID but the subsequent GET failed, the UUID remains available and the user can retry the read-only GET. A Room GET 401 triggers a separate `/auth/me` revalidation instead of trusting the old Room display.
 
-**Phase 6-6-B deliberately does not include** real Ready, Leave, Kick, Disband, Start Game, WebSocket or gameplay. The original `MockGateway` and its demo interface have not been modified, and real accounts never enter Mock rooms.
+**Phase 6-6-B originally included only read-only Room operations**; Phase 6-6-C (below) subsequently added Ready, Leave, Kick and Disband. Start Game, WebSocket and gameplay remain unimplemented. The original `MockGateway` and its demo interface have not been modified, and real accounts never enter Mock rooms.
 
 ### Manual two-account acceptance
 
@@ -186,3 +186,7 @@ No real Game Start, Ready-to-Start action, WebSocket, polling or gameplay is inc
 ### Phase 6-6-C manual integration
 
 With two independent authenticated browser sessions in the same Room, verify guest Ready → GET, Unready → GET and Leave → 204, and Host Kick → 204 → GET, Leave (with disband warning) → 204 and Disband → 204. Confirm that guests never see Kick/Disband and Hosts never see Ready. Simulate write failure or follow-up GET outage, verify stale/unknown warning and manual refresh rather than duplicate writes. Run `cd frontend && npm run check && npm test && npm run build` prior to merging.
+
+## Phase 6-6-D · Real dual-account integration audit
+
+See [ROOM_INTEGRATION_ACCEPTANCE.md](./ROOM_INTEGRATION_ACCEPTANCE.md) for the **not-yet-executed live browser / FastAPI / PostgreSQL** acceptance ledger, prerequisites, non-sensitive evidence guidelines, recovery/negative scenarios and cleanup rules. Source-level tests do not prove that two independent browser sessions can complete the Room lifecycle against an actual database. The latest UI accurately reflects Phase 6-6-C Lobby controls; the post-Ready/Kick authoritative GET 403/404 case no longer offers a refresh after its Room locator has been revoked.
