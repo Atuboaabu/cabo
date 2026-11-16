@@ -20,8 +20,10 @@ class RoomConnectionManager:
         websocket: WebSocket
     )->None:
         collections = self.connections.setdefault(room_id, {})
-        collections[websocket].account_id = account_id
-        collections[websocket].authorized = False
+        collections[websocket] = RoomConnection(
+            account_id,
+            False
+        )
     
     def authorize(
         self,
