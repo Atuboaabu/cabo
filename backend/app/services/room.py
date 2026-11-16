@@ -416,8 +416,7 @@ def disband_room(
 
 def execute_disband_room(
     token: str,
-    room_id: UUID,
-    target_account_id: UUID
+    room_id: UUID
 )->None:
     with Session(engine) as session:
         user = auth.get_authenticated_account(
@@ -425,11 +424,10 @@ def execute_disband_room(
             token
         )
 
-        kick_room_member(
+        disband_room(
             session,
             user,
-            room_id,
-            target_account_id
+            room_id
         )
 
 def get_room_info(
