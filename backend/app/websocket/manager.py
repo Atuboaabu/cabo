@@ -5,7 +5,7 @@ from collections import defaultdict
 
 class RoomConnectionManager:
     def __init__(self) -> None:
-        self.connections: dict[UUID, dict[WebSocket, UUID]] = defaultdict()
+        self.connections: dict[UUID, dict[WebSocket, UUID]] = {}
 
     def connect(
         self,
@@ -13,12 +13,12 @@ class RoomConnectionManager:
         account_id: UUID,
         websocket: WebSocket
     )->None:
-        self.connections[room_id][websocket] = account_id
+        collections = self.connections.setdefault(room_id, {})
+        collections[websocket] = account_id
 
     def disconnect(
         self,
         room_id: UUID,
-        account_id: UUID,
         websocket: WebSocket
     )->None:
         connection_dict = self.connections.get(room_id)
@@ -30,6 +30,9 @@ class RoomConnectionManager:
             return
         
         connection_dict.pop(websocket)
+
+        if not connection_dict:
+            self.connections.pop(room_id, None)
     
     async def broadcast(
         self,
@@ -40,19 +43,20 @@ class RoomConnectionManager:
         if connection_dict is None:
             return
         
+        targets = list(connection_dict.items())
+        
         results = await asyncio.gather(
             *(
                 ws.send_json(message)
-                for ws in connection_dict.keys()
+                for ws, _ in targets
             ),
             return_exceptions=True
         )
 
-        for ws, account_id, result in zip(connection_dict.keys(), connection_dict.values(), results):
+        for (ws, _), result in zip(targets, results):
             if isinstance(result, Exception):
                 self.disconnect(
                     room_id,
-                    account_id,
                     ws
                 )
 
