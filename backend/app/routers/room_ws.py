@@ -80,6 +80,10 @@ async def room_websocket(
         if current_account_id != account_id:
             await websocket.close(code=1008)
             return
+        
+        if not manager.authorize(room_id, websocket):
+            await websocket.close(code=1008)
+            return
     
         while True:
             await websocket.receive_text()
