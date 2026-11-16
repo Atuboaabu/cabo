@@ -29,27 +29,47 @@ class RoomConnectionManager:
         if not connection_dict:
             self.connections.pop(room_id, None)
     
-    def account_disconnect(
+    async def account_disconnect(
         self,
         room_id: UUID,
         account_id: UUID
     )->None:
         connection_dict = self.connections.get(room_id)
-        if connection_dict is None:
-            return
-
-        for (websocket, _account_id) in connection_dict.items():
-            if _account_id == account_id:
-                connection_dict.pop(websocket, None)
-
         if not connection_dict:
-            self.connections.pop(room_id, None)
+            return
+        
+        targets = [
+            ws
+            for ws, id in connection_dict.items()
+            if id == account_id
+        ]
+
+        for ws in targets:
+            self.disconnect(room_id, ws)
+
+        await asyncio.gather(
+            *(
+                ws.close(code=1008)
+                for ws in targets
+            ),
+            return_exceptions=True
+        )
     
-    def room_disconnect(
+    async def room_disconnect(
         self,
         room_id: UUID
     )->None:
-        self.connections.pop(room_id, None)
+        connection_dict = self.connections.pop(room_id, {})
+
+        targets = list(connection_dict.keys())
+
+        await asyncio.gather(
+            *(
+                ws.close(code=1008)
+                for ws in targets
+            ),
+            return_exceptions=True
+        )
     
     async def broadcast(
         self,

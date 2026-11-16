@@ -283,7 +283,7 @@ def leave_room(
 def execute_leave_room(
     token: str,
     room_id: UUID,
-)->UUID:
+)->tuple[UUID, bool]:
     with Session(engine) as session:
         user = auth.get_authenticated_account(
             session,
@@ -296,7 +296,13 @@ def execute_leave_room(
             room_id
         )
 
-        return user.id
+        host_account_id = session.execute(
+            select(Room.host_account_id).where(
+                Room.id == room_id
+            ).with_for_update()
+        ).scalar_one()
+
+        return user.id, (user.id == host_account_id)
 
 def kick_room_member(
     session: Session,

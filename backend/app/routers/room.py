@@ -113,16 +113,21 @@ async def room_member_leave(
     if not token:
         raise exceptions.InvalidCookieException()
 
-    account_id = await run_in_threadpool(
+    account_id, host_leave = await run_in_threadpool(
         room.execute_leave_room,
         token,
         room_id
     )
 
-    manager.account_disconnect(
-        room_id,
-        account_id
-    )
+    if not host_leave:
+        await manager.account_disconnect(
+            room_id,
+            account_id
+        )
+    else:
+        await manager.room_disconnect(
+            room_id
+        )
 
     await manager.broadcast(
         room_id,
@@ -153,7 +158,7 @@ async def kick_room_member(
         target_account_id
     )
 
-    manager.account_disconnect(
+    await manager.account_disconnect(
         room_id,
         target_account_id
     )
@@ -182,6 +187,10 @@ async def disband_room(
     await run_in_threadpool(
         room.execute_disband_room,
         token,
+        room_id
+    )
+
+    await manager.room_disconnect(
         room_id
     )
 
