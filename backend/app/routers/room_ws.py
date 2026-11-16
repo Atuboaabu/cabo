@@ -71,6 +71,15 @@ async def room_websocket(
             account_id,
             websocket
         )
+
+        current_account_id = await run_in_threadpool(
+            room.verify_room_ws_access,
+            room_id,
+            session_token
+        )
+        if current_account_id != account_id:
+            await websocket.close(code=1008)
+            return
     
         while True:
             await websocket.receive_text()
