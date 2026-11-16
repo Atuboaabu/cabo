@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 from app.models import UserAccount, Room, RoomMember
 from app.schemas import ROOM_CODE_ALPHABET, RoomMemberView, RoomView
 from app.exc import exceptions
+from app.services import auth
+from app.database import engine
 
 def generate_room_code() -> str:
     return "".join(
@@ -381,3 +383,44 @@ def get_room_info(
             for member_info in members_info
         ]
     )
+
+def verify_room_subscription_permission(
+    session: Session,
+    account_id: UUID,
+    room_id: UUID
+)->bool:
+    authorized_account_id = session.execute(
+        select(RoomMember.account_id).join(
+            Room,
+            RoomMember.room_id == Room.id,
+        ).where(
+            Room.id == room_id,
+            Room.state == "Lobby",
+            RoomMember.account_id == account_id,
+            RoomMember.left_at.is_(None),
+        )
+    ).scalar_one_or_none()
+    return authorized_account_id is not None
+
+def verify_room_ws_access(
+    room_id: UUID,
+    token: str
+)->UUID|None:
+    with Session(engine) as session:
+        try:
+            user = auth.get_authenticated_account(
+                session,
+                token
+            )
+        except exceptions.InvalidCookieException:
+            return None
+        
+        allowed = verify_room_subscription_permission(
+            session,
+            user.id,
+            room_id
+        )
+        if not allowed:
+            return None
+        else:
+            return user.id

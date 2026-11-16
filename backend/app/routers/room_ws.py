@@ -1,16 +1,18 @@
 from uuid import UUID
-from fastapi import APIRouter, WebSocket
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from logging import getLogger
+from starlette.concurrency import run_in_threadpool
+from sqlalchemy.exc i
 
 from app.config import settings
 from app.depencicies import SessionDep
-from app.services import auth
+from app.services import room
 
 logger = getLogger(__name__)
 
 router = APIRouter(
     prefix="/ws/rooms",
-    tags="room-websoket"
+    tags=["room-websoket"]
 )
 
 async def reject_websocket(
@@ -48,12 +50,12 @@ async def room_websocket(
         )
         return
     
-    user = await auth.get_authenticated_account(
-        session,
+    account_id = run_in_threadpool(
+        room.verify_room_ws_access,
+        room_id,
         session_token
     )
-
-    if user is None:
+    if account_id is None:
         await reject_websocket(
             websocket,
             "Invalid session"
@@ -64,3 +66,11 @@ async def room_websocket(
     logger.info(
         "Websocket accepted: room_id=%s", room_id
     )
+
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        logger.info(
+            "Websocket disconnected: room_id=%s", room_id
+        )
