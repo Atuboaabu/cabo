@@ -1,10 +1,13 @@
 from uuid import UUID
 from fastapi import APIRouter, status
+from starlette.concurrency import run_in_threadpool
+
 from app.schemas import (RoomResponse, RoomJoinRequest, RoomReadyResponse, RoomReadyRequest,
                          RoomView)
 
 from app.depencicies import SessionDep, ActiveUserDep, OriginCheckDep
 from app.services import room
+from app.websocket.manager import manager
 
 router = APIRouter(
     prefix="/rooms",
@@ -40,17 +43,26 @@ def create_room(
     response_model=RoomResponse,
     dependencies=[OriginCheckDep]
 )
-def join_room(
+async def join_room(
     session: SessionDep,
     user: ActiveUserDep,
     join_request: RoomJoinRequest
 ):
-    room_info = room.join_room(
+    room_info = await run_in_threadpool(
+        room.join_room,
         session,
         user,
         join_request.room_code
     )
     assert room_info is not None
+
+    await manager.broadcast(
+        room_info.id,
+        {
+            "type": "room.changed",
+            "room_id": str(room_info.id)
+        }
+    )
 
     return RoomResponse(
         id=room_info.id,
@@ -65,17 +77,26 @@ def join_room(
     response_model=RoomReadyResponse,
     dependencies=[OriginCheckDep]
 )
-def roommember_set_ready(
+async def roommember_set_ready(
     session: SessionDep,
     user: ActiveUserDep,
     room_id: UUID,
     ready_request: RoomReadyRequest
 ):
-    room_member = room.set_room_member_ready(
+    room_member = await run_in_threadpool(
+        room.set_room_member_ready,
         session,
         user,
         room_id,
         ready_request.ready
+    )
+
+    await manager.broadcast(
+        room_id,
+        {
+            "type": "room.changed",
+            "room_id": str(room_id)
+        }
     )
 
     return RoomReadyResponse(
@@ -88,15 +109,24 @@ def roommember_set_ready(
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[OriginCheckDep]
 )
-def room_member_leave(
+async def room_member_leave(
     session: SessionDep,
     user: ActiveUserDep,
     room_id: UUID
 ):
-    room.leave_room(
+    await run_in_threadpool(
+        room.leave_room,
         session,
         user,
         room_id
+    )
+
+    await manager.broadcast(
+        room_id,
+        {
+            "type": "room.changed",
+            "room_id": str(room_id)
+        }
     )
 
 @router.post(
@@ -104,17 +134,26 @@ def room_member_leave(
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[OriginCheckDep]
 )
-def kick_room_member(
+async def kick_room_member(
     session: SessionDep,
     user: ActiveUserDep,
     room_id: UUID,
     target_account_id: UUID
 ):
-    room.kick_room_member(
+    await run_in_threadpool(
+        room.kick_room_member,
         session,
         user,
         room_id,
         target_account_id
+    )
+
+    await manager.broadcast(
+        room_id,
+        {
+            "type": "room.changed",
+            "room_id": str(room_id)
+        }
     )
 
 @router.post(
@@ -122,15 +161,24 @@ def kick_room_member(
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[OriginCheckDep]
 )
-def disband_room(
+async def disband_room(
     session: SessionDep,
     user: ActiveUserDep,
     room_id: UUID
 ):
-    room.disband_room(
+    await run_in_threadpool(
+        room.disband_room,
         session,
         user,
         room_id
+    )
+
+    await manager.broadcast(
+        room_id,
+        {
+            "type": "room.changed",
+            "room_id": str(room_id)
+        }
     )
 
 @router.get(
