@@ -290,19 +290,20 @@ def execute_leave_room(
             token
         )
 
+        host_account_id = session.execute(
+            select(Room.host_account_id).where(
+                Room.id == room_id
+            )
+        ).scalar_one()
+        host_leave = (user.id == host_account_id)
+
         leave_room(
             session,
             user,
             room_id
         )
 
-        host_account_id = session.execute(
-            select(Room.host_account_id).where(
-                Room.id == room_id
-            ).with_for_update()
-        ).scalar_one()
-
-        return user.id, (user.id == host_account_id)
+        return user.id, host_leave
 
 def kick_room_member(
     session: Session,

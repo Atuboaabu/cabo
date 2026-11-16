@@ -8,6 +8,7 @@ from app.schemas import (RoomResponse, RoomJoinRequest, RoomReadyResponse, RoomR
 from app.depencicies import SessionDep, ActiveUserDep, OriginCheckDep
 from app.services import room
 from app.websocket.manager import manager
+from app.websocket.notification import notification_room_changed
 from app.exc import exceptions
 
 router = APIRouter(
@@ -90,13 +91,7 @@ async def roommember_set_ready(
         ready_request.ready
     )
 
-    await manager.broadcast(
-        room_id,
-        {
-            "type": "room.changed",
-            "room_id": str(room_id)
-        }
-    )
+    await notification_room_changed(room_id)
 
     return response
 
@@ -124,18 +119,8 @@ async def room_member_leave(
             room_id,
             account_id
         )
-    else:
-        await manager.room_disconnect(
-            room_id
-        )
 
-    await manager.broadcast(
-        room_id,
-        {
-            "type": "room.changed",
-            "room_id": str(room_id)
-        }
-    )
+        await notification_room_changed(room_id)
 
 @router.post(
     "/{room_id}/members/{target_account_id}/kick",
@@ -163,13 +148,7 @@ async def kick_room_member(
         target_account_id
     )
 
-    await manager.broadcast(
-        room_id,
-        {
-            "type": "room.changed",
-            "room_id": str(room_id)
-        }
-    )
+    await notification_room_changed(room_id)
 
 @router.post(
     "/{room_id}/disband",
@@ -192,14 +171,6 @@ async def disband_room(
 
     await manager.room_disconnect(
         room_id
-    )
-
-    await manager.broadcast(
-        room_id,
-        {
-            "type": "room.changed",
-            "room_id": str(room_id)
-        }
     )
 
 @router.get(
