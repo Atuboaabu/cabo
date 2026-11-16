@@ -7,7 +7,8 @@ from sqlalchemy import select, func, update
 from datetime import datetime, timezone
 
 from app.models import UserAccount, Room, RoomMember
-from app.schemas import ROOM_CODE_ALPHABET, RoomMemberView, RoomView
+from app.schemas import (ROOM_CODE_ALPHABET, RoomMemberView, RoomView,
+                         RoomResponse, RoomReadyResponse)
 from app.exc import exceptions
 from app.services import auth
 from app.database import engine
@@ -132,6 +133,29 @@ def join_room(
         session.rollback()
         raise
 
+def execute_join_room(
+    token: str,
+    room_code: str
+)->RoomResponse:
+    with Session(engine) as session:
+        user = auth.get_authenticated_account(
+            session,
+            token
+        )
+        
+        room_info = join_room(
+            session,
+            user,
+            room_code
+        )
+
+        return RoomResponse(
+            id=room_info.id,
+            room_code=room_info.room_code,
+            host_account_id=room_info.host_account_id,
+            state=room_info.state
+        )
+
 def set_room_member_ready(
     session: Session,
     user_account: UserAccount,
@@ -172,6 +196,29 @@ def set_room_member_ready(
     except Exception:
         session.rollback()
         raise
+
+def execute_set_room_member_ready(
+    token: str,
+    room_id: UUID,
+    ready: bool
+)->RoomReadyResponse:
+    with Session(engine) as session:
+        user = auth.get_authenticated_account(
+            session,
+            token
+        )
+
+        room_member = set_room_member_ready(
+            session,
+            user,
+            room_id,
+            ready
+        )
+
+        return RoomReadyResponse(
+            account_id=room_member.account_id,
+            is_ready=room_member.is_ready
+        )
 
 def _close_room(
     session: Session,
@@ -233,6 +280,24 @@ def leave_room(
         session.rollback()
         raise
 
+def execute_leave_room(
+    token: str,
+    room_id: UUID,
+)->UUID:
+    with Session(engine) as session:
+        user = auth.get_authenticated_account(
+            session,
+            token
+        )
+
+        leave_room(
+            session,
+            user,
+            room_id
+        )
+
+        return user.id
+
 def kick_room_member(
     session: Session,
     host_user: UserAccount,
@@ -293,6 +358,24 @@ def kick_room_member(
         session.rollback()
         raise
 
+def execute_kick_room_member(
+    token: str,
+    room_id: UUID,
+    target_account_id: UUID
+)->None:
+    with Session(engine) as session:
+        user = auth.get_authenticated_account(
+            session,
+            token
+        )
+
+        kick_room_member(
+            session,
+            user,
+            room_id,
+            target_account_id
+        )
+
 def disband_room(
     session: Session,
     host_user: UserAccount,
@@ -330,6 +413,24 @@ def disband_room(
     except Exception:
         session.rollback()
         raise
+
+def execute_disband_room(
+    token: str,
+    room_id: UUID,
+    target_account_id: UUID
+)->None:
+    with Session(engine) as session:
+        user = auth.get_authenticated_account(
+            session,
+            token
+        )
+
+        kick_room_member(
+            session,
+            user,
+            room_id,
+            target_account_id
+        )
 
 def get_room_info(
     session: Session,

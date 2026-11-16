@@ -1,5 +1,5 @@
 from uuid import UUID
-from fastapi import APIRouter, status
+from fastapi import APIRouter, status, Request
 from starlette.concurrency import run_in_threadpool
 
 from app.schemas import (RoomResponse, RoomJoinRequest, RoomReadyResponse, RoomReadyRequest,
@@ -8,6 +8,7 @@ from app.schemas import (RoomResponse, RoomJoinRequest, RoomReadyResponse, RoomR
 from app.depencicies import SessionDep, ActiveUserDep, OriginCheckDep
 from app.services import room
 from app.websocket.manager import manager
+from app.exc import exceptions
 
 router = APIRouter(
     prefix="/rooms",
@@ -44,32 +45,28 @@ def create_room(
     dependencies=[OriginCheckDep]
 )
 async def join_room(
-    session: SessionDep,
-    user: ActiveUserDep,
+    request: Request,
     join_request: RoomJoinRequest
 ):
-    room_info = await run_in_threadpool(
-        room.join_room,
-        session,
-        user,
+    token = request.cookies.get("session_token")
+    if not token:
+        raise exceptions.InvalidCookieException()
+
+    response = await run_in_threadpool(
+        room.execute_join_room,
+        token,
         join_request.room_code
     )
-    assert room_info is not None
 
     await manager.broadcast(
-        room_info.id,
+        response.id,
         {
             "type": "room.changed",
-            "room_id": str(room_info.id)
+            "room_id": str(response.id)
         }
     )
 
-    return RoomResponse(
-        id=room_info.id,
-        room_code=room_info.room_code,
-        host_account_id=room_info.host_account_id,
-        state=room_info.state
-    )
+    return response
 
 @router.put(
     "/{room_id}/ready",
@@ -78,15 +75,17 @@ async def join_room(
     dependencies=[OriginCheckDep]
 )
 async def roommember_set_ready(
-    session: SessionDep,
-    user: ActiveUserDep,
+    request: Request,
     room_id: UUID,
     ready_request: RoomReadyRequest
 ):
-    room_member = await run_in_threadpool(
-        room.set_room_member_ready,
-        session,
-        user,
+    token = request.cookies.get("session_token")
+    if not token:
+        raise exceptions.InvalidCookieException()
+
+    response = await run_in_threadpool(
+        room.execute_set_room_member_ready,
+        token,
         room_id,
         ready_request.ready
     )
@@ -99,10 +98,7 @@ async def roommember_set_ready(
         }
     )
 
-    return RoomReadyResponse(
-        account_id=room_member.account_id,
-        is_ready=room_member.is_ready
-    )
+    return response
 
 @router.post(
     "/{room_id}/leave",
@@ -110,15 +106,22 @@ async def roommember_set_ready(
     dependencies=[OriginCheckDep]
 )
 async def room_member_leave(
-    session: SessionDep,
-    user: ActiveUserDep,
+    request: Request,
     room_id: UUID
 ):
-    await run_in_threadpool(
-        room.leave_room,
-        session,
-        user,
+    token = request.cookies.get("session_token")
+    if not token:
+        raise exceptions.InvalidCookieException()
+
+    account_id = await run_in_threadpool(
+        room.execute_leave_room,
+        token,
         room_id
+    )
+
+    manager.account_disconnect(
+        room_id,
+        account_id
     )
 
     await manager.broadcast(
@@ -135,15 +138,22 @@ async def room_member_leave(
     dependencies=[OriginCheckDep]
 )
 async def kick_room_member(
-    session: SessionDep,
-    user: ActiveUserDep,
+    request: Request,
     room_id: UUID,
     target_account_id: UUID
 ):
+    token = request.cookies.get("session_token")
+    if not token:
+        raise exceptions.InvalidCookieException()
+
     await run_in_threadpool(
-        room.kick_room_member,
-        session,
-        user,
+        room.execute_kick_room_member,
+        token,
+        room_id,
+        target_account_id
+    )
+
+    manager.account_disconnect(
         room_id,
         target_account_id
     )
@@ -162,14 +172,16 @@ async def kick_room_member(
     dependencies=[OriginCheckDep]
 )
 async def disband_room(
-    session: SessionDep,
-    user: ActiveUserDep,
+    request: Request,
     room_id: UUID
 ):
+    token = request.cookies.get("session_token")
+    if not token:
+        raise exceptions.InvalidCookieException()
+
     await run_in_threadpool(
-        room.disband_room,
-        session,
-        user,
+        room.execute_disband_room,
+        token,
         room_id
     )
 
