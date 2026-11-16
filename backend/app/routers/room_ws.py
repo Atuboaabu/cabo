@@ -4,7 +4,6 @@ from logging import getLogger
 from starlette.concurrency import run_in_threadpool
 
 from app.config import settings
-from app.depencicies import SessionDep
 from app.services import room
 
 logger = getLogger(__name__)
