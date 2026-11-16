@@ -59,13 +59,7 @@ async def join_room(
         join_request.room_code
     )
 
-    await manager.broadcast(
-        response.id,
-        {
-            "type": "room.changed",
-            "room_id": str(response.id)
-        }
-    )
+    await notification_room_changed(response.id)
 
     return response
 
@@ -121,6 +115,10 @@ async def room_member_leave(
         )
 
         await notification_room_changed(room_id)
+    else:
+        await manager.room_disconnect(
+            room_id
+        )
 
 @router.post(
     "/{room_id}/members/{target_account_id}/kick",
