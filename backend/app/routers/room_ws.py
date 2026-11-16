@@ -2,7 +2,6 @@ from uuid import UUID
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from logging import getLogger
 from starlette.concurrency import run_in_threadpool
-from sqlalchemy.exc i
 
 from app.config import settings
 from app.depencicies import SessionDep
@@ -12,7 +11,7 @@ logger = getLogger(__name__)
 
 router = APIRouter(
     prefix="/ws/rooms",
-    tags=["room-websoket"]
+    tags=["room-websocket"]
 )
 
 async def reject_websocket(
@@ -28,7 +27,6 @@ async def reject_websocket(
     "/{room_id}"
 )
 async def room_websocket(
-    session: SessionDep,
     websocket: WebSocket,
     room_id: UUID
 )->None:
@@ -50,7 +48,7 @@ async def room_websocket(
         )
         return
     
-    account_id = run_in_threadpool(
+    account_id = await run_in_threadpool(
         room.verify_room_ws_access,
         room_id,
         session_token
