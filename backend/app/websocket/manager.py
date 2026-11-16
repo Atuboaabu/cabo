@@ -1,7 +1,6 @@
 import asyncio
 from uuid import UUID
 from fastapi import WebSocket
-from collections import defaultdict
 
 class RoomConnectionManager:
     def __init__(self) -> None:
@@ -24,12 +23,8 @@ class RoomConnectionManager:
         connection_dict = self.connections.get(room_id)
         if connection_dict is None:
             return
-        
-        account = connection_dict.get(websocket)
-        if account is None:
-            return
-        
-        connection_dict.pop(websocket)
+
+        connection_dict.pop(websocket, None)
 
         if not connection_dict:
             self.connections.pop(room_id, None)
