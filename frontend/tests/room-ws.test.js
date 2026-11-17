@@ -13,18 +13,42 @@ const store=()=>{const values=new Map();return{
 }};
 class FakeWebSocket{
  static sockets=[];
- constructor(url){this.url=url;this.closed=false;FakeWebSocket.sockets.push(this);}
- close(){this.closed=true;}
+ constructor(url){this.url=url;this.closed=false;this.readyState=0;FakeWebSocket.sockets.push(this);}
+ open(){if(this.closed)return;this.readyState=1;this.onopen?.();}
+ close(){this.closed=true;this.readyState=3;}
  sendMessage(data){this.onmessage?.({data:JSON.stringify(data)});}
- serverClose(code=1008){this.closed=true;this.onclose?.({code});}
+ serverClose(code=1008){this.closed=true;this.readyState=3;this.onclose?.({code});}
 }
-const setup=({api,storage=store(),onChange=()=>{}}={})=>{
+class FakeClock{
+ now=0;next=1;timers=new Map();delays=[];
+ setTimeout=(fn,delay)=>{
+  const id=this.next++;
+  this.timers.set(id,{fn,at:this.now+delay});
+  this.delays.push(delay);
+  return id;
+ };
+ clearTimeout=id=>{this.timers.delete(id);};
+ get pending(){return this.timers.size;}
+ async advance(ms){
+  const end=this.now+ms;
+  for(let i=0;i<100;i++){
+   const entries=[...this.timers.entries()]
+    .filter(([,t])=>t.at<=end).sort((a,b)=>a[1].at-b[1].at);
+   if(!entries.length)break;
+   const [id,t]=entries[0];this.timers.delete(id);this.now=t.at;
+   t.fn();await tick();
+  }
+  this.now=end;await tick();
+ }
+}
+const setup=({api,storage=store(),onChange=()=>{},clock=new FakeClock()}={})=>{
  FakeWebSocket.sockets=[];
  const rooms=createRealRoomState({
   api,storage,onChange,getAccountId:()=>member,
+  setTimeoutFn:clock.setTimeout,clearTimeoutFn:clock.clearTimeout,random:()=>1,
   createSocket:opts=>createRoomSocket({...opts,WebSocketImpl:FakeWebSocket,baseUrl:'http://localhost:8000'})
  });
- return {rooms,storage,sockets:FakeWebSocket.sockets};
+ return {rooms,storage,sockets:FakeWebSocket.sockets,clock};
 };
 const tick=async()=>{await Promise.resolve();await Promise.resolve();await Promise.resolve();};
 
