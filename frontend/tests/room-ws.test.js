@@ -483,3 +483,157 @@ test('foreground check is ignored while real Room notifications are paused or Ro
  await tick();
  assert.equal(reads,1);
 });
+
+
+test('network close verifies GET before retry, and OPEN triggers a fresh authoritative GET',async()=>{
+ let reads=0;
+ const {rooms,sockets,clock}=setup({api:{getRoom:async()=>{reads++;return view(a);}}});
+ rooms.state.roomId=a;await rooms.refresh();sockets[0].open();
+ sockets[0].serverClose(1006);await tick();
+ assert.equal(reads,2);assert.equal(clock.pending,1);
+ assert.equal(sockets.length,1,'GET validation alone does not reconnect');
+ await clock.advance(999);assert.equal(sockets.length,1);
+ await clock.advance(1);
+ assert.equal(sockets.length,2);
+ assert.equal(sockets[1].readyState,0,'new WebSocket is still CONNECTING');
+ assert.equal(reads,2,'construction must not be treated as OPEN');
+ sockets[1].open();await tick();
+ assert.equal(reads,3,'authoritative GET after OPEN is mandatory');
+ assert.equal(rooms.state.roomId,a);
+ assert.equal(clock.pending,0,'no retry timer remains after successful GET');
+});
+test('Kick 403 and Disband 404 cancel retries and revoke access',async()=>{
+ for(const code of [403,404]){
+  let reads=0;
+  const {rooms,sockets,clock}=setup({api:{getRoom:async()=>{
+   if(++reads===1)return view(a);
+   throw Object.assign(new Error('revoked'),{status:code});
+  }}});
+  rooms.state.roomId=a;await rooms.refresh();
+  sockets[0].serverClose(1008);await tick();
+  assert.equal(reads,2);assert.equal(rooms.state.roomId,null);
+  assert.equal(clock.pending,0);
+  await clock.advance(60000);
+  assert.equal(sockets.length,1);
+ }
+});
+test('transient GET failures back off 1s/2s/4s then recover, preserving verified view',async()=>{
+ let reads=0;
+ const {rooms,sockets,clock}=setup({api:{getRoom:async()=>{
+  reads++;
+  if(reads===2||reads===3)throw Object.assign(new Error('offline'),{status:503});
+  return view(a);
+ }}});
+ rooms.state.roomId=a;await rooms.refresh();
+ sockets[0].serverClose(1006);await tick();
+ assert.equal(reads,2);assert.equal(rooms.state.view.id,a);
+ assert.equal(clock.pending,1);
+ await clock.advance(1000);assert.equal(reads,3);
+ assert.equal(rooms.state.view.id,a);
+ await clock.advance(2000);assert.equal(reads,4);
+ assert.equal(sockets.length,1,'must not reconnect before a verified GET');
+ await clock.advance(4000);
+ assert.equal(sockets.length,2);
+ sockets[1].open();await tick();
+ assert.equal(reads,5);
+ assert.equal(clock.pending,0);
+ assert.deepEqual(clock.delays.slice(0,3),[1000,2000,4000]);
+});
+test('failed handshakes cannot cause fast infinite reconnects or concurrent sockets',async()=>{
+ let reads=0;
+ const {rooms,sockets,clock}=setup({api:{getRoom:async()=>{reads++;return view(a);}}});
+ rooms.state.roomId=a;await rooms.refresh();sockets[0].serverClose(1006);await tick();
+ await clock.advance(1000);
+ assert.equal(sockets.length,2);assert.equal(clock.pending,1);
+ assert.equal(clock.delays.at(-1),10000,'one handshake timeout');
+ await clock.advance(10000);
+ assert.equal(sockets[1].closed,true);
+ assert.equal(clock.pending,1);
+ await clock.advance(2000);
+ assert.equal(reads,3,'revalidate after handshake timeout');
+ assert.equal(sockets.length,2);
+ await clock.advance(4000);
+ assert.equal(sockets.length,3);
+ sockets[2].serverClose(1006);await tick();
+ assert.equal(clock.pending,1);
+ await clock.advance(8000);
+ assert.equal(sockets.length,4);
+ assert.ok(clock.delays.every(delay=>delay>=1000&&delay<=30000));
+ assert.equal(clock.pending,1,'a single timer exists, even after repeated disconnects');
+});
+test('Leave, Disband, Logout and Mock pause cancel recovery timers',async()=>{
+ for(const action of ['leaveRoom','disbandRoom','reset','pauseNotifications']){
+  const {rooms,sockets,clock}=setup({api:{
+   getRoom:async()=>view(a),leaveRoom:async()=>null,disbandRoom:async()=>null
+  }});
+  rooms.state.roomId=a;await rooms.refresh();
+  sockets[0].serverClose(1006);await tick();
+  assert.equal(clock.pending,1);
+  if(action==='reset'||action==='pauseNotifications')rooms[action]();
+  else await rooms[action]();
+  assert.equal(clock.pending,0,action+' must cancel retry');
+  await clock.advance(60000);
+  assert.equal(sockets.length,1,action+' cannot open a late socket');
+ }
+});
+test('switching Rooms cancels stale timers and ignores a late timeout callback',async()=>{
+ const {rooms,sockets,clock}=setup({api:{
+  getRoom:async id=>view(id),
+  createRoom:async()=>({id:b,room_code:'NEW234',state:'Lobby',host_account_id:member})
+ }});
+ rooms.state.roomId=a;await rooms.refresh();
+ sockets[0].serverClose(1006);await tick();
+ const oldTimer=[...clock.timers.values()][0].fn;
+ rooms.reset();
+ assert.equal(await rooms.createRoom(),true);
+ assert.equal(rooms.state.roomId,b);
+ oldTimer();await tick();
+ await clock.advance(60000);
+ assert.equal(sockets.length,2);
+ assert.equal(rooms.state.view.id,b);
+});
+test('multiple late close callbacks do not create duplicate verification or timer loops',async()=>{
+ let reads=0;
+ const {rooms,sockets,clock}=setup({api:{getRoom:async()=>{reads++;return view(a);}}});
+ rooms.state.roomId=a;await rooms.refresh();
+ const closeEvent=sockets[0].onclose;
+ sockets[0].serverClose(1006);
+ closeEvent?.({code:1006});closeEvent?.({code:1006});
+ await tick();
+ assert.equal(reads,2);
+ assert.equal(clock.pending,1);
+ await clock.advance(1000);
+ assert.equal(sockets.length,2);
+});
+test('failed post-OPEN GET is retried without creating a third socket',async()=>{
+ let reads=0;
+ const {rooms,sockets,clock}=setup({api:{getRoom:async()=>{
+  reads++;
+  if(reads===3)throw Object.assign(new Error('temporary'),{status:503});
+  return view(a);
+ }}});
+ rooms.state.roomId=a;await rooms.refresh();sockets[0].serverClose(1006);await tick();
+ await clock.advance(1000);
+ sockets[1].open();await tick();
+ assert.equal(reads,3);
+ assert.equal(clock.pending,1);
+ await clock.advance(2000);
+ assert.equal(reads,4);assert.equal(sockets.length,2);
+ assert.equal(clock.pending,0);
+});
+test('post-OPEN GET returning 401/403 stops reconnect and clears Room authorization',async()=>{
+ for(const status of [401,403]){
+  let reads=0;
+  const {rooms,sockets,clock}=setup({api:{getRoom:async()=>{
+   reads++;
+   if(reads===3)throw Object.assign(new Error('expired'),{status});
+   return view(a);
+  }}});
+  rooms.state.roomId=a;await rooms.refresh();
+  sockets[0].serverClose(1006);await tick();await clock.advance(1000);
+  sockets[1].open();await tick();
+  assert.equal(reads,3);
+  assert.equal(rooms.state.view,null);
+  assert.equal(clock.pending,0);
+ }
+});
