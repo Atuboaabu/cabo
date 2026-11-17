@@ -763,3 +763,87 @@ test('exponential verification backoff saturates at 30 seconds without socket ch
  assert.equal(clock.pending,1,'only one timer after ten failures');
  rooms.reset();assert.equal(clock.pending,0);
 });
+
+test('room.changed GET Playing keeps Room ID and closes Lobby socket without reconnect',async()=>{
+ let reads=0;
+ const storage=store();
+ const {rooms,sockets,clock}=setup({storage,api:{getRoom:async()=>{
+  reads++;
+  return {...view(a),state:reads===1?'Lobby':'Playing'};
+ }}});
+ rooms.state.roomId=a;await rooms.refresh();
+ assert.equal(sockets.length,1);
+ const oldMessage=sockets[0].onmessage;
+ sockets[0].sendMessage({type:'room.changed',room_id:a});
+ await tick();
+ assert.equal(rooms.state.view.state,'Playing');
+ assert.equal(rooms.state.roomId,a);
+ assert.equal(storage.getItem('cabo.lastRealRoomId'),a);
+ assert.equal(sockets[0].closed,true);
+ assert.equal(clock.pending,0);
+ const after=reads;
+ oldMessage?.({data:JSON.stringify({type:'room.changed',room_id:a})});
+ await clock.advance(60000);
+ assert.equal(reads,after);
+ assert.equal(sockets.length,1);
+ await rooms.refresh();
+ assert.equal(sockets.length,1,'manual GET in Playing does not open Lobby socket');
+});
+test('server closes Lobby WS after Start: GET Playing retains Room and cancels recovery',async()=>{
+ let reads=0;
+ const {rooms,sockets,clock}=setup({api:{getRoom:async()=>{
+  reads++;return {...view(a),state:reads===1?'Lobby':'Playing'};
+ }}});
+ rooms.state.roomId=a;await rooms.refresh();
+ sockets[0].serverClose(1008);await tick();
+ assert.equal(reads,2);
+ assert.equal(rooms.state.view.state,'Playing');
+ assert.equal(rooms.state.roomId,a);
+ assert.equal(clock.pending,0);
+ await clock.advance(90000);
+ assert.equal(sockets.length,1,'Playing never reconnects to Lobby WebSocket');
+});
+test('network recovery GET returns Playing: cancel timer and do not reconnect',async()=>{
+ let reads=0;
+ const {rooms,sockets,clock}=setup({api:{getRoom:async()=>{
+  reads++;
+  if(reads===2)throw Object.assign(new Error('temporary'),{status:503});
+  return {...view(a),state:reads>=3?'Playing':'Lobby'};
+ }}});
+ rooms.state.roomId=a;await rooms.refresh();
+ sockets[0].serverClose(1006);await tick();
+ assert.equal(clock.pending,1);
+ await clock.advance(1000);
+ assert.equal(rooms.state.view.state,'Playing');
+ assert.equal(rooms.state.roomId,a);
+ assert.equal(clock.pending,0);
+ await clock.advance(60000);
+ assert.equal(sockets.length,1);
+});
+test('Start acknowledgement, changed notification and close racing still converge on GET Playing',async()=>{
+ const guest={account_id:'123e4567-e89b-12d3-a456-426614174003',username:'Bob',seat_index:1,is_ready:true,is_host:false};
+ const lobby={...view(a),members:[...view(a).members,guest]};
+ let started=false,reads=0;
+ let socketsRef;
+ const {rooms,sockets,clock}=setup({api:{
+  async getRoom(){reads++;return {...lobby,state:started?'Playing':'Lobby'};},
+  async startGame(){
+   started=true;
+   socketsRef[0].sendMessage({type:'room.changed',room_id:a});
+   socketsRef[0].serverClose(1008);
+   return {id:'123e4567-e89b-12d3-a456-426614174006',room_id:a,state:'InitialReveal',started_at:'2026-11-17T09:00:00Z'};
+  }
+ }});
+ socketsRef=sockets;
+ rooms.state.roomId=a;await rooms.refresh();
+ const start=rooms.startGame();
+ assert.equal(await rooms.startGame(),false,'pending start blocks duplicate POST');
+ await start;await tick();
+ assert.equal(rooms.state.view.state,'Playing');
+ assert.equal(rooms.state.roomId,a);
+ assert.equal(sockets[0].closed,true);
+ assert.equal(clock.pending,0);
+ await clock.advance(90000);
+ assert.equal(sockets.length,1);
+ assert.ok(reads>=2,'all navigation comes from authoritative GET');
+});
