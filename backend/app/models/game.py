@@ -1,6 +1,6 @@
 import uuid
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import ForeignKey, String, func, DateTime, CheckConstraint, Index, text
+from sqlalchemy import ForeignKey, String, func, DateTime, CheckConstraint, Index, text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime
 
@@ -52,4 +52,49 @@ class GameSession(Base):
     ended_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=True
+    )
+
+class GamePlayer(Base):
+    __tablename__ = "game_players"
+    __table_args__ = (
+        CheckConstraint(
+            "seat_index >= 0 AND seat_index <= 3",
+            name="ck_game_players_seat_index_inrange"
+        ),
+        UniqueConstraint(
+            "game_session_id",
+            "account_id",
+            name="uq_game_players_game_session_id_account_id"
+        ),
+        UniqueConstraint(
+            "game_session_id",
+            "seat_index",
+            name="uq_game_players_game_session_id_seat_index"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        DateTime(timezone=True),
+        default=uuid.uuid4,
+        primary_key=True
+    )
+
+    game_session_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("game_sessions.id"),
+        nullable=False
+    )
+
+    account_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("user_accounts.id"),
+        nullable=False
+    )
+
+    seat_index: Mapped[int] = mapped_column(
+        nullable=False
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False
     )
