@@ -105,7 +105,9 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
     if(!background){state.error='';state.stale=!!state.view;emit();}
     try{
       const room=await api.getRoom(id);
-      if(token!==generation)return false;
+      // A socket close during an older GET requires a fresh authorization
+      // check. Discard that older response before any UI mutation.
+      if(token!==generation||queuedCloseVerification)return false;
       if(room.id.toLowerCase()!==id.toLowerCase())throw Error('服务端返回的房间 ID 不一致，请重新验证。');
       changed=JSON.stringify(state.view)!==JSON.stringify(room)||!!state.error||state.stale;
       state.roomId=id;state.view=room;state.error='';state.stale=false;
@@ -114,7 +116,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
       openRoomSocket(id);
       return true;
     }catch(error){
-      if(token===generation){
+      if(token===generation&&!queuedCloseVerification){
         if(!background || [401,403,404].includes(error?.status)){
           failure(error,'read');
           if(fromClose&&(error?.status===403||error?.status===404)){
@@ -221,7 +223,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
       state.pending='read';emit();
       try{
         const latest=await api.getRoom(id);
-        if(token!==generation)return false;
+        if(token!==generation||queuedCloseVerification)return false;
         if(latest.id.toLowerCase()!==id.toLowerCase())throw Error('服务端返回的房间 ID 不一致，请刷新房间。');
         state.view=latest;
         openRoomSocket(id);
@@ -230,7 +232,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
         state.error='';
         return true;
       }catch(error){
-        if(token!==generation)return false;
+        if(token!==generation||queuedCloseVerification)return false;
         failure(error,'read');
         // A confirmed write followed by an authoritative 403/404 means the
         // Room locator has been invalidated. No Room ID remains to refresh.
