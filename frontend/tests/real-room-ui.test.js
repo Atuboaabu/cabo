@@ -36,6 +36,7 @@ function boot({roomApi,storedId=null,me=account}={}){
   resendSecondsRemaining:()=>0,VERIFICATION_COOLDOWN_MS:60000,
   createAuthApi:()=>({getMe:async()=>me,logout:async()=>null}),
   createRoomApi:()=>roomApi,
+  createRoomSocket:()=>({connect(){},close(){}}),
   createRealRoomState,
   setInterval(){},
   FormData:class{
