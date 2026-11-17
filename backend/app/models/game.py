@@ -74,7 +74,7 @@ class GamePlayer(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
-        DateTime(timezone=True),
+        UUID(as_uuid=True),
         default=uuid.uuid4,
         primary_key=True
     )
