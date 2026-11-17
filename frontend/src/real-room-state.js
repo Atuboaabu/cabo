@@ -153,6 +153,9 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
     // A missed WebSocket close cannot be distinguished from a healthy socket.
     // Re-check membership once when the tab/window comes back to the foreground.
     if(notificationsPaused||!state.roomId||!state.view)return false;
+    // A close recovery already owns the next authoritative validation, with
+    // one bounded timer. Focus must not bypass its backoff or queue a second GET.
+    if(recovery&&isRecoveryActive(recovery))return true;
     queuedRoomChange=true;
     queuedReturnVerification=true;
     flushRoomChange();
