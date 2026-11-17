@@ -285,3 +285,23 @@ Optional diagnostics continue to use `window.CABO_DEBUG_ROOM_WS = true`, logging
 6. Verify the manual Refresh button, focus return, HTTPS `wss://` deployment and dev Cookie/Origin settings still work.
 
 These are **manual acceptance steps, not an executed live-browser E2E result**. The unit tests use a deterministic fake WebSocket and fake clock to test reconnection order, cancellation, access revocation and stale events.
+
+## Phase 7-E2 · Start Game → Playing Room handoff (no Game View)
+
+The real Room HTTP client now exposes `startGame(roomId)`, calling `POST /rooms/{room_id}/start` and requiring HTTP **201** with the backend's `GameStartResponse` (Game ID, Room ID, state and timestamp). The response does **not** create a frontend Game Session or game/hand state. After the write is acknowledged, the existing real Room controller performs an **authoritative GET Room View**; only that GET can set the visible Room state to `Playing`. Concurrent `room.changed` / socket close notifications may supersede an in-flight GET, in which case the queued fresh GET determines state. An uncertain Start write is not automatically repeated.
+
+The real Lobby Host sees **开始游戏** only when the authenticated Host is a verified member. The control is enabled exclusively for `Lobby`, 2–4 members, every non-Host member Ready, and no pending/stale/unknown action. Guests never see it; disabled Start does not send a POST. The same guards run in the controller even if an action is invoked directly.
+
+When a GET returns **Playing**, keep the existing Room ID, server-confirmed members/seats and the navigation locator. Show **游戏已开始** with an explicit statement that real Game View, dealing and turn APIs are not yet connected. Immediately close the **Lobby-only** WebSocket and cancel its recovery timer; subsequent manual GET, focus revalidation, stale socket callbacks or room changes must never reconnect that Lobby WebSocket while the Room is Playing. A Playing Room is **not** treated as unauthorized. HTTP 401/403/404 retain the existing authentication/Room-access failure handling. Nothing enters the Mock demonstration automatically.
+
+### Manual browser acceptance (requires an isolated FastAPI/PostgreSQL test environment)
+
+1. Use Alice (Host) and Bob (member) in two independently authenticated browser profiles. Alice creates a Room and Bob joins. Before Bob is Ready, the Host sees a disabled Start button; Bob has no Start button.
+2. Once Bob marks Ready, Alice sees enabled **开始游戏** after the authoritative Room GET. With a third/fourth member, Start remains disabled until **every** guest is Ready. With one member or more than four members, Start remains unavailable.
+3. Alice clicks Start once. In Network, verify `POST /rooms/{id}/start` **201** exactly once, then a subsequent **GET** `/rooms/{id}` **200** returning `state: "Playing"`. The UI displays **游戏已开始**, no fake cards/Game Session, and still holds the same Room ID.
+4. In Bob's browser, verify a `room.changed` notification or Lobby WebSocket close leads to GET 200 Playing. Bob remains in the real Room (not the Create/Join entrance), and no Lobby WebSocket reconnect timer remains.
+5. Reload both browser pages. After session validation and GET, they should still display Playing and not attempt the Lobby-only WebSocket. Manual Refresh should continue to show authoritative Playing.
+6. Simulate notification-before-201, close-before-GET, overlapping GETs and transient network errors in a test environment. Ensure no duplicate Start POST, stale Lobby view overrides or automatic Lobby reconnect when Playing is confirmed.
+7. Independently verify invalid Start attempts (non-Host, missing Ready, wrong Room state, concurrent request) cannot change the UI optimistically. HTTP 401/403/404 follow existing access rules.
+
+These steps are **not confirmed as real-browser E2E** until executed against a configured test deployment. Do not inspect or record HttpOnly Cookie values.
