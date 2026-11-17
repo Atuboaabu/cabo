@@ -13,6 +13,7 @@ class RoomConnectionManager:
     def __init__(self) -> None:
         self.connections: dict[UUID, dict[WebSocket, RoomConnection]] = {}
         self.room_locks: dict[UUID, asyncio.Lock] = {}
+        self._SEND_TIMEOUT_SECONDS = 2
     
     def get_room_lock(
         self,
@@ -146,7 +147,10 @@ class RoomConnectionManager:
             
             results = await asyncio.gather(
                 *(
-                    ws.send_json(message)
+                    asyncio.wait_for(
+                        ws.send_json(message),
+                        timeout=self._SEND_TIMEOUT_SECONDS
+                    )
                     for ws in targets
                 ),
                 return_exceptions=True
