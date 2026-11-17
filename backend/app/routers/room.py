@@ -3,10 +3,10 @@ from fastapi import APIRouter, status, Request
 from starlette.concurrency import run_in_threadpool
 
 from app.schemas import (RoomResponse, RoomJoinRequest, RoomReadyResponse, RoomReadyRequest,
-                         RoomView)
+                         RoomView, GameStartResponse)
 
 from app.depencicies import SessionDep, ActiveUserDep, OriginCheckDep
-from app.services import room
+from app.services import room, game
 from app.websocket.manager import manager
 from app.websocket.notification import notification_room_changed
 from app.exc import exceptions
@@ -186,3 +186,25 @@ def get_room_info(
         user,
         room_id
     )
+
+@router.post(
+    "/{room_id}/start-game",
+    status_code=status.HTTP_201_CREATED,
+    response_model=GameStartResponse,
+    dependencies=[OriginCheckDep]
+)
+async def start_game(
+    request: Request,
+    room_id: UUID
+):
+    token = request.cookies.get("session_token")
+    if not token:
+        raise exceptions.InvalidCookieException()
+
+    response = await run_in_threadpool(
+        game.execute_start_game,
+        token,
+        room_id
+    )
+
+    return response
