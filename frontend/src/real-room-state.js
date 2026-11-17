@@ -6,6 +6,10 @@
 const KEY='cabo.lastRealRoomId';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ROOM_CODE=/^[A-HJ-NP-Z2-9]{6}$/;
+const trace=(event,roomId,extra={})=>{
+  if(globalThis.CABO_DEBUG_ROOM_WS===true)
+    console.info('[CABO room]',event,{room_id:roomId,...extra});
+};
 
 export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthorized=()=>{},getAccountId=()=>null,createSocket=null}={}) {
   const state={
@@ -23,8 +27,12 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
     onClosed:roomId=>{
       // WebSocket close (including 1008) is a signal to *verify*, not proof
       // of a kick. Only an authoritative GET may revoke Room navigation.
-      if(roomId.toLowerCase()!==state.roomId?.toLowerCase()||!state.view||
-         notificationsPaused)return;
+      const eligible=roomId.toLowerCase()===state.roomId?.toLowerCase()&&
+        !!state.view&&!notificationsPaused;
+      trace('close-callback',roomId,{
+        eligible,paused:notificationsPaused,pending:state.pending||'none'
+      });
+      if(!eligible)return;
       queuedRoomChange=true;
       queuedCloseVerification=true;
       flushRoomChange();
@@ -47,6 +55,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
     queuedRoomChange=false;
     const fromClose=queuedCloseVerification;
     queuedCloseVerification=false;
+    if(fromClose)trace('close-recheck-queued',state.roomId);
     void readRoom(state.roomId,{silent:true,fromClose});
   }
   const save=id=>{
@@ -84,6 +93,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
     if((error?.status===403 || error?.status===404) && kind!=='mutation'){
       // An authoritative GET may revoke the current Room locator.
       queuedRoomChange=false;queuedCloseVerification=false;socket?.close();
+      trace('room-access-revoked',state.roomId,{status:error.status});
       save(null);state.roomId=null;state.view=null;state.stale=false;
     }else if(kind==='read'||kind==='mutation'){
       // Mutation conflicts / network uncertainty require a fresh GET before
@@ -102,12 +112,14 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
     const background=silent&&!!state.view;
     let changed=false;
     state.pending='read';state.quietRead=false;
+    if(fromClose)trace('close-recheck-get',id);
     if(!background){state.error='';state.stale=!!state.view;emit();}
     try{
       const room=await api.getRoom(id);
       // A socket close during an older GET requires a fresh authorization
       // check. Discard that older response before any UI mutation.
       if(token!==generation||queuedCloseVerification)return false;
+      if(fromClose)trace('close-recheck-result',id,{status:200});
       if(room.id.toLowerCase()!==id.toLowerCase())throw Error('服务端返回的房间 ID 不一致，请重新验证。');
       changed=JSON.stringify(state.view)!==JSON.stringify(room)||!!state.error||state.stale;
       state.roomId=id;state.view=room;state.error='';state.stale=false;
@@ -117,6 +129,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
       return true;
     }catch(error){
       if(token===generation&&!queuedCloseVerification){
+        if(fromClose)trace('close-recheck-result',id,{status:error?.status||0});
         if(!background || [401,403,404].includes(error?.status)){
           failure(error,'read');
           if(fromClose&&(error?.status===403||error?.status===404)){
