@@ -638,3 +638,73 @@ test('post-OPEN GET returning 401/403 stops reconnect and clears Room authorizat
   assert.equal(clock.pending,0);
  }
 });
+
+test('terminal mutation cancels pending reconnection before its HTTP response',async()=>{
+ for(const action of ['leaveRoom','disbandRoom']){
+  let resolveWrite;
+  const write=new Promise(resolve=>resolveWrite=resolve);
+  const {rooms,sockets,clock}=setup({api:{
+   getRoom:async()=>view(a),
+   leaveRoom:async()=>write,disbandRoom:async()=>write
+  }});
+  rooms.state.roomId=a;await rooms.refresh();
+  sockets[0].serverClose(1006);await tick();
+  assert.equal(clock.pending,1);
+  const pending=rooms[action]();
+  assert.equal(clock.pending,0,action+' must immediately cancel all timers');
+  assert.equal(sockets[0].closed,true);
+  await clock.advance(60000);
+  assert.equal(sockets.length,1);
+  resolveWrite(null);
+  assert.equal(await pending,true);
+  assert.equal(rooms.state.roomId,null);
+ }
+});
+test('unknown Leave preserves last confirmed Room after canceling reconnection',async()=>{
+ const {rooms,sockets,clock}=setup({api:{
+  getRoom:async()=>view(a),
+  leaveRoom:async()=>{throw Object.assign(new Error('network unavailable'),{outcomeUnknown:true});}
+ }});
+ rooms.state.roomId=a;await rooms.refresh();
+ sockets[0].serverClose(1006);await tick();
+ assert.equal(await rooms.leaveRoom(),false);
+ assert.equal(rooms.state.roomId,a);
+ assert.equal(rooms.state.view.id,a);
+ assert.equal(clock.pending,0);
+ await clock.advance(60000);
+ assert.equal(sockets.length,1);
+});
+test('manual GET and foreground verification cannot bypass a pending backoff timer',async()=>{
+ let reads=0;
+ const {rooms,sockets,clock}=setup({api:{getRoom:async()=>{reads++;return view(a);}}});
+ rooms.state.roomId=a;await rooms.refresh();
+ sockets[0].serverClose(1006);await tick();
+ assert.equal(clock.pending,1);
+ assert.equal(await rooms.refresh(),true);
+ rooms.verifyOnReturn();await tick();
+ assert.equal(sockets.length,1,'verified manual GET must not create socket prematurely');
+ assert.equal(clock.pending,1,'only one existing retry timer survives');
+ await clock.advance(1000);
+ assert.equal(sockets.length,2);
+ sockets[1].open();await tick();
+ assert.equal(clock.pending,0);
+});
+test('stale onopen and retry timer after room switch cannot affect next room',async()=>{
+ const {rooms,sockets,clock}=setup({api:{
+  getRoom:async id=>view(id),
+  createRoom:async()=>({id:b,room_code:'NEW234',host_account_id:member,state:'Lobby'})
+ }});
+ rooms.state.roomId=a;await rooms.refresh();
+ sockets[0].serverClose(1006);await tick();
+ await clock.advance(1000);
+ assert.equal(sockets.length,2);
+ const oldOpen=sockets[1].onopen;
+ const oldTimeout=[...clock.timers.values()][0].fn;
+ rooms.reset();
+ assert.equal(await rooms.createRoom(),true);
+ assert.equal(clock.pending,0);
+ oldOpen?.();oldTimeout();await tick();
+ assert.equal(rooms.state.roomId,b);
+ assert.equal(rooms.state.view.id,b);
+ assert.equal(sockets.length,3);
+});
