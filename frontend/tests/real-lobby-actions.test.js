@@ -222,3 +222,24 @@ test('Start unknown result retains Lobby locator and blocks unsafe repeated requ
  assert.equal(await rooms.startGame(),false);
  assert.equal(writes,1);
 });
+
+test('Start HTTP 409 does not invent Playing or retry the write; refresh remains authoritative',async()=>{
+ let writes=0,reads=0;
+ const ready={...lobby,members:[hostMember,{...guestMember,is_ready:true}]};
+ const {rooms,storage}=setup({identity:host,view:ready,api:{
+  async startGame(){writes++;throw fail(409);},
+  async getRoom(){reads++;return {...ready,state:'Playing'};}
+ }});
+ assert.equal(await rooms.startGame(),false);
+ assert.equal(writes,1);
+ assert.equal(rooms.state.view.state,'Lobby');
+ assert.equal(rooms.state.stale,true);
+ assert.equal(rooms.allowedMutation('start'),false);
+ assert.equal(await rooms.startGame(),false);
+ assert.equal(writes,1);
+ assert.equal(await rooms.refresh(),true);
+ assert.equal(reads,1);
+ assert.equal(rooms.state.view.state,'Playing');
+ assert.equal(rooms.state.roomId,id);
+ assert.equal(storage.getItem('cabo.lastRealRoomId'),id);
+});
