@@ -5,7 +5,7 @@ from sqlalchemy import select
 from app.models import UserAccount, Room, RoomMember
 from app.exc import exceptions
 
-def validate_game_ready(
+def validate_start_game(
     session: Session,
     host_user: UserAccount,
     room_id: UUID
@@ -30,14 +30,13 @@ def validate_game_ready(
     if host_user.id != room.host_account_id:
         raise exceptions.RequesterWrongException()
     
-    members_id = (
-        member.id
+    if not any(
+        member.account_id == host_user.id
         for member in room_members
-    )
-    if host_user.id not in members_id:
+    ):
         raise exceptions.RequesterWrongException()
 
-    if len(room_members) <= 1 or len(room_members) >=4:
+    if not 2 <= len(room_members) <= 4:
         raise exceptions.GamePlayerCountInvalidException()
     
     all_members_ready = all(
