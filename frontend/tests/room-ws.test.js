@@ -181,3 +181,39 @@ test('create, join, and stored Room recovery connect only after authoritative GE
   assert.equal(sockets.length,1,mode+' should connect exactly once');
  }
 });
+
+test('confirmed Leave and Disband close the existing Room WebSocket',async()=>{
+ for(const method of ['leaveRoom','disbandRoom']){
+  const {rooms,sockets}=setup({api:{
+   getRoom:async()=>view(a),
+   [method]:async()=>null
+  }});
+  rooms.state.roomId=a;
+  await rooms.refresh();
+  assert.equal(sockets.length,1);
+  assert.equal(await rooms[method](),true);
+  assert.equal(sockets[0].closed,true);
+  assert.equal(rooms.state.roomId,null);
+ }
+});
+test('restoring another Room closes the old socket before the new GET finishes',async()=>{
+ const storage=store();
+ let finish;
+ const pending=new Promise(resolve=>finish=resolve);
+ let target=a;
+ const {rooms,sockets}=setup({storage,api:{getRoom:async id=>{
+  if(id===b)return pending;
+  return view(a);
+ }}});
+ rooms.state.roomId=a;
+ await rooms.refresh();
+ storage.setItem('cabo.lastRealRoomId',b);
+ const restoring=rooms.restore();
+ assert.equal(sockets[0].closed,true);
+ assert.equal(rooms.state.view,null);
+ assert.equal(sockets.length,1);
+ finish(view(b));
+ assert.equal(await restoring,true);
+ assert.equal(sockets.length,2);
+ assert.equal(rooms.state.roomId,b);
+});
