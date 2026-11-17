@@ -373,3 +373,34 @@ test('Kick and Leave confirmation do not rebuild the full account page',async()=
  assert.equal(fullRedraws,0,'confirmed Kick and follow-up GET remain Room-local');
  assert.ok(patches.length>0);
 });
+
+test('confirmed Leave switches to Room entry with one local patch and no page rebuild',async()=>{
+ const guest={id:members[0].account_id,username:'Bob',email:'bob@example.com'};
+ let leaves=0;
+ const ui=boot({me:guest,storedId:id,roomApi:{
+  async getRoom(){return {...baseRoom,members};},
+  async leaveRoom(){leaves++;return null;}
+ }});
+ await flush();await flush();
+ let html=ui.root.innerHTML,fullRedraws=0,closed=0;
+ Object.defineProperty(ui.root,'innerHTML',{
+  configurable:true,get:()=>html,set:value=>{fullRedraws++;html=value;}
+ });
+ const patches=[];
+ ui.root.querySelector=selector=>{
+  if(selector==='.app-shell')return {insertAdjacentHTML(){}};
+  if(selector==='[data-real-room-dialog]')return {remove(){closed++;}};
+  if(selector==='.real-room-area')return {set outerHTML(value){patches.push(value);}};
+  return null;
+ };
+ clickReal(ui,'realRoomLeave');
+ clickReal(ui,'realRoomApprove');
+ await flush();
+ assert.equal(leaves,1);
+ assert.equal(closed,1);
+ assert.equal(fullRedraws,0,'Leave success must not reconstruct account shell');
+ assert.equal(ui.rooms.state.roomId,null);
+ assert.equal(ui.store.getItem('cabo.lastRealRoomId'),null);
+ assert.match(patches.at(-1),/创建房间/);
+ assert.doesNotMatch(patches.at(-1),/正在离开房间/);
+});
