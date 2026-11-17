@@ -21,7 +21,7 @@ function boot({roomApi,storedId=null,me=account}={}){
  const store=storage();
  if(storedId)store.setItem('cabo.lastRealRoomId',storedId);
  let sent=0;
- let onRoomChanged=()=>{};
+ let onRoomChanged=()=>{},onRoomClosed=()=>{};
  const root={
   innerHTML:'',
   addEventListener(type,fn){events[type]=fn;},
@@ -37,7 +37,7 @@ function boot({roomApi,storedId=null,me=account}={}){
   resendSecondsRemaining:()=>0,VERIFICATION_COOLDOWN_MS:60000,
   createAuthApi:()=>({getMe:async()=>me,logout:async()=>null}),
   createRoomApi:()=>roomApi,
-  createRoomSocket:options=>{onRoomChanged=options.onChanged;return {connect(){},close(){}};},
+  createRoomSocket:options=>{onRoomChanged=options.onChanged;onRoomClosed=options.onClosed;return {connect(){},close(){}};},
   createRealRoomState,
   setInterval(){},
   FormData:class{
@@ -46,7 +46,7 @@ function boot({roomApi,storedId=null,me=account}={}){
   }
  };
  runInNewContext(appSource+'\n;globalThis.__testRoom=realRooms;',ctx);
- return {root,rooms:ctx.__testRoom,store,events,mockSends:()=>sent,notify:id=>onRoomChanged(id)};
+ return {root,rooms:ctx.__testRoom,store,events,mockSends:()=>sent,notify:id=>onRoomChanged(id),remoteClose:id=>onRoomClosed(id)};
 }
 async function flush(){await new Promise(resolve=>setImmediate(resolve));}
 
@@ -403,4 +403,28 @@ test('confirmed Leave switches to Room entry with one local patch and no page re
  assert.equal(ui.store.getItem('cabo.lastRealRoomId'),null);
  assert.match(patches.at(-1),/创建房间/);
  assert.doesNotMatch(patches.at(-1),/正在离开房间/);
+});
+
+test('1008 remote close followed by authoritative 403 transitions real account UI to entrance',async()=>{
+ const guest={id:members[0].account_id,username:'Bob',email:'bob@example.com'};
+ let reads=0;
+ const ui=boot({me:guest,storedId:id,roomApi:{
+  async getRoom(){
+   if(++reads===1)return {...baseRoom,members};
+   throw Object.assign(new Error('无权访问房间'),{status:403});
+  }
+ }});
+ await flush();await flush();
+ assert.match(ui.root.innerHTML,/真实房间/);
+ assert.match(ui.root.innerHTML,/Bob/);
+ ui.remoteClose(id);
+ await flush();await flush();
+ assert.equal(reads,2);
+ assert.equal(ui.rooms.state.roomId,null);
+ assert.equal(ui.rooms.state.view,null);
+ assert.equal(ui.store.getItem('cabo.lastRealRoomId'),null);
+ assert.match(ui.root.innerHTML,/创建房间/);
+ assert.match(ui.root.innerHTML,/当前房间已关闭或你已不在房间/);
+ assert.doesNotMatch(ui.root.innerHTML,/data-action="realRoomRefresh"/);
+ assert.equal(ui.mockSends(),0);
 });
