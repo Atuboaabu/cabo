@@ -22,8 +22,8 @@ export function roomWebSocketUrl(roomId, baseUrl=globalThis.CABO_ROOM_WS_BASE_UR
   return url.href;
 }
 
-export function createRoomSocket({onChanged,onClosed=()=>{},WebSocketImpl=globalThis.WebSocket,baseUrl}={}) {
-  if(typeof onChanged!=='function'||typeof onClosed!=='function')throw new TypeError('需要房间通知回调');
+export function createRoomSocket({onChanged,onClosed=()=>{},onOpen=()=>{},WebSocketImpl=globalThis.WebSocket,baseUrl}={}) {
+  if(typeof onChanged!=='function'||typeof onClosed!=='function'||typeof onOpen!=='function')throw new TypeError('需要房间通知回调');
   let socket=null,activeRoomId=null;
   function close(){
     const old=socket;
@@ -37,15 +37,17 @@ export function createRoomSocket({onChanged,onClosed=()=>{},WebSocketImpl=global
     }
   }
   function connect(roomId){
-    if(socket&&activeRoomId?.toLowerCase()===roomId?.toLowerCase())return;
+    if(socket&&activeRoomId?.toLowerCase()===roomId?.toLowerCase())return false;
     close();
-    if(typeof WebSocketImpl!=='function')return;
+    if(typeof WebSocketImpl!=='function')return false;
     const url=roomWebSocketUrl(roomId,baseUrl);
     const ws=new WebSocketImpl(url);
     socket=ws;activeRoomId=roomId;
     trace('connecting',roomId,{origin:new URL(url).origin});
     ws.onopen=()=>{
-      if(socket===ws)trace('open',roomId);
+      if(socket!==ws)return;
+      trace('open',roomId);
+      onOpen(roomId);
     };
     ws.onerror=()=>{
       if(socket===ws)trace('error',roomId);
@@ -69,7 +71,14 @@ export function createRoomSocket({onChanged,onClosed=()=>{},WebSocketImpl=global
       trace('close',roomId,{code:event?.code,clean:event?.wasClean===true});
       onClosed(roomId,event?.code);
     };
-    // No automatic reconnect. The manual refresh button stays available.
+    // The controller owns backoff and permission checks; this layer never retries.
+    return true;
   }
-  return {connect,close,get roomId(){return activeRoomId;}};
+  function reconnect(roomId){
+    // Called only after the controller's authoritative GET. Detach old close
+    // handlers before closing, and make this the sole active socket.
+    close();
+    return connect(roomId);
+  }
+  return {connect,reconnect,close,get roomId(){return activeRoomId;}};
 }
