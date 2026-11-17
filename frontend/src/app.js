@@ -38,7 +38,8 @@ function shell(inner,cls=''){
 function realRoomPanel(){
  const room=realRooms.state,waiting=!!room.pending;
  const error=room.error?'<p class="real-room-feedback" data-tone="error" role="alert">'+esc(room.error)+'</p>':'';
- const pending=waiting?'<p class="real-room-feedback" data-tone="info" role="status">正在'+({create:'创建房间',join:'加入房间',read:'同步服务器房间信息',ready:'更新准备状态',leave:'离开房间',kick:'踢出成员',disband:'解散房间'}[room.pending]||'处理房间请求')+'…</p>':'';
+ const showPending=waiting&&!['ready','kick','leave','disband'].includes(room.pending)&&!(room.pending==='read'&&room.quietRead);
+ const pending=showPending?'<p class="real-room-feedback" data-tone="info" role="status">正在'+({create:'创建房间',join:'加入房间',read:'同步服务器房间信息'}[room.pending]||'处理房间请求')+'…</p>':'';
  if(room.roomId){
   const r=room.view,members=r?[...r.members].sort((a,b)=>a.seat_index-b.seat_index):[];
   const me=r?.members.find(m=>m.account_id===realAccount.id);
@@ -51,7 +52,7 @@ function realRoomPanel(){
    +'</div>':'';
   return '<section class="real-room-area"><div class="section-heading"><div><span class="eyebrow">REAL ROOM · FASTAPI</span><h2>真实房间</h2></div><button type="button" class="outline" data-action="realRoomRefresh" '+(waiting?'disabled':'')+'>刷新房间</button></div>'
    +pending+error+(r?'<article class="paper-card real-room-card"><div class="room-summary"><div><span class="eyebrow">房间码</span><strong class="real-room-code">'+esc(r.room_code)+'</strong></div><div><span>房间状态</span><strong>'+esc(r.state)+'</strong></div><div><span>成员人数</span><strong>'+members.length+' / 4</strong></div></div><p class="hint">房主账号：'+esc(r.host_account_id)+'</p>'+(room.stale?'<p class="real-room-feedback" data-tone="info" role="status">这是上次确认的房间信息，请刷新后核实最新状态。</p>':'')
-   +'<h3>成员与座位</h3><div class="member-list">'+members.map(m=>'<div class="member"><div class="avatar">'+esc(m.username[0]||'?')+'</div><div><strong>'+esc(m.username)+'</strong> '+(m.account_id===realAccount.id?'<span class="gold-chip">你</span>':'')+'<small>座位 '+esc(m.seat_index)+' · '+esc(m.account_id)+'</small></div><div class="member-meta">'+(m.is_host?'<span class="gold-chip">房主</span>':'')+'<span class="'+(m.is_ready?'ready':'unready')+'">'+(m.is_ready?'✓ 已准备':'○ 未准备')+'</span>'+(lobby&&me.is_host&&m.account_id!==me.account_id&&!m.is_host?'<button type="button" class="small outline" data-action="realRoomKick:'+esc(m.account_id)+'" '+(locked?'disabled':'')+'>踢出</button>':'')+'</div></div>').join('')+'</div>'+lobbyActions+'</article>'
+   +'<h3>成员与座位</h3><div class="member-list">'+members.map(m=>'<div class="member" data-room-member="'+esc(m.account_id)+'"><div class="avatar">'+esc(m.username[0]||'?')+'</div><div><strong>'+esc(m.username)+'</strong> '+(m.account_id===realAccount.id?'<span class="gold-chip">你</span>':'')+'<small>座位 '+esc(m.seat_index)+' · '+esc(m.account_id)+'</small></div><div class="member-meta">'+(m.is_host?'<span class="gold-chip">房主</span>':'')+'<span class="'+(m.is_ready?'ready':'unready')+'">'+(m.is_ready?'✓ 已准备':'○ 未准备')+'</span>'+(lobby&&me.is_host&&m.account_id!==me.account_id&&!m.is_host?'<button type="button" class="small outline" data-action="realRoomKick:'+esc(m.account_id)+'" '+(locked?'disabled':'')+'>踢出</button>':'')+'</div></div>').join('')+'</div>'+lobbyActions+'</article>'
    :'<article class="paper-card"><p>服务器尚未确认房间访问权限，目前不展示成员。</p><p class="hint">如查询失败，请点击「刷新房间」。网络错误并不代表房间已解散。</p></article>')+'</section>';
  }
  return '<section class="real-room-area"><h2>真实房间大厅</h2>'+pending+error
@@ -61,10 +62,60 @@ function realRoomPanel(){
 }
 // WebSocket notifications update only the real Room area, leaving the
 // account header, dialogs, scroll position and other controls untouched.
+// Reconcile the existing Room DOM rather than replacing the whole Room/card.
+// In particular Ready/Unready only changes the member's badge and action text.
+function syncRoomNode(current,next){
+ if(current.nodeType!==next.nodeType||
+    (current.nodeType===1&&current.tagName!==next.tagName)){
+  current.replaceWith(next.cloneNode(true));return;
+ }
+ if(current.nodeType===3){
+  if(current.nodeValue!==next.nodeValue)current.nodeValue=next.nodeValue;
+  return;
+ }
+ if(current.nodeType!==1)return;
+ for(const attribute of [...current.attributes]){
+  if(!next.hasAttribute(attribute.name))current.removeAttribute(attribute.name);
+ }
+ for(const attribute of [...next.attributes]){
+  if(current.getAttribute(attribute.name)!==attribute.value)
+   current.setAttribute(attribute.name,attribute.value);
+ }
+ if(current.classList.contains('member-list')){
+  const known=new Map([...current.children].map(node=>[node.getAttribute('data-room-member'),node]));
+  const wanted=new Set();
+  for(let i=0;i<next.children.length;i++){
+   const candidate=next.children[i],id=candidate.getAttribute('data-room-member');
+   wanted.add(id);
+   const existing=known.get(id);
+   if(!existing){
+    current.insertBefore(candidate.cloneNode(true),current.children[i]||null);
+   }else{
+    if(current.children[i]!==existing)current.insertBefore(existing,current.children[i]||null);
+    syncRoomNode(existing,candidate);
+   }
+  }
+  for(const child of [...current.children]){
+   if(!wanted.has(child.getAttribute('data-room-member')))child.remove();
+  }
+  return;
+ }
+ // Preserve stable cards/buttons and change text/attributes only when needed.
+ let i=0;
+ while(i<next.childNodes.length){
+  const incoming=next.childNodes[i],existing=current.childNodes[i];
+  if(!existing)current.appendChild(incoming.cloneNode(true));
+  else syncRoomNode(existing,incoming);
+  i++;
+ }
+ while(current.childNodes.length>next.childNodes.length)current.lastChild.remove();
+}
 function renderSilentRoom(){
  const section=root.querySelector('.real-room-area');
  if(!section)return false;
- section.outerHTML=realRoomPanel();
+ const template=document.createElement('template');
+ template.innerHTML=realRoomPanel();
+ syncRoomNode(section,template.content.firstElementChild);
  return true;
 }
 function realAccountPage(){
