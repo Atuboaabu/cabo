@@ -208,7 +208,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
   function setJoinCode(value){
     state.joinCode=String(value??'').toUpperCase();
   }
-  function failure(error,kind) {
+  function failure(error,kind,action=null) {
     state.error=error?.message||'房间请求未完成，请稍后重试。';
     if(error?.outcomeUnknown && kind!=='read'){
       state.outcomeUnknown=true;
@@ -225,7 +225,8 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
       // Mutation conflicts / network uncertainty require a fresh GET before
       // any more writes. A kick-target 404 does not invalidate the whole Room.
       state.stale=!!state.view;
-      if(kind==='mutation' && error?.status===404)state.error+=' 请刷新房间查看最新成员。';
+      if(kind==='mutation' && action==='kick' && error?.status===404)
+        state.error+=' 请刷新房间查看最新成员。';
       if(error?.status===401){cancelRecovery();state.view=null;socket?.close();}
     }
     if(error?.status===401)Promise.resolve().then(onUnauthorized).catch(()=>{});
@@ -389,13 +390,17 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
         // A confirmed write followed by an authoritative 403/404 means the
         // Room locator has been invalidated. No Room ID remains to refresh.
         // For transient GET failures retain the locator and offer read-only retry.
-        state.error=(error?.status===403||error?.status===404)
-          ? '操作已获服务器受理，但当前房间已无法访问，请返回房间入口。'
-          : '操作可能已完成，但暂时无法确认最新房间状态，请刷新房间。';
+        state.error=action==='start'
+          ? ((error?.status===403||error?.status===404)
+            ? '开始游戏请求已返回 201，但当前房间已无法访问，请返回房间入口。'
+            : '开始游戏请求已返回 201，游戏可能已成功开始，但暂时无法确认最新房间状态。请刷新房间核实，勿重复点击「开始游戏」。')
+          : ((error?.status===403||error?.status===404)
+            ? '操作已获服务器受理，但当前房间已无法访问，请返回房间入口。'
+            : '操作可能已完成，但暂时无法确认最新房间状态，请刷新房间。');
         return false;
       }
     }catch(error){
-      if(token===generation)failure(error,'mutation');
+      if(token===generation)failure(error,'mutation',action);
       return false;
     }finally{
       if(token===generation){state.pending=null;state.quietRead=false;emit({silent:true});flushRoomChange();}
