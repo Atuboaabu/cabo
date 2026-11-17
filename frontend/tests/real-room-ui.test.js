@@ -290,6 +290,7 @@ test('WebSocket Room update patches only Room area, without full-screen flicker'
   }
  }});
  await flush();
+ await flush(); // Allow initial /auth/me and stored Room restore to finish.
  let fullRedraws=0;
  let html=ui.root.innerHTML;
  Object.defineProperty(ui.root,'innerHTML',{
