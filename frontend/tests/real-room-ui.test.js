@@ -465,3 +465,58 @@ test('focus and visibilitychange close together cause a single silent Room verif
  assert.equal(reads,2);
  assert.equal(ui.rooms.state.roomId,id);
 });
+
+test('Host Start button enabled only for verified eligible Lobby, hidden for guest and Playing',async()=>{
+ const readyMembers=members;
+ const hostUI=boot({storedId:id,roomApi:{getRoom:async()=>({...baseRoom,members:readyMembers})}});
+ await flush();await flush();
+ assert.match(hostUI.root.innerHTML,/data-action="realRoomStart"/);
+ assert.match(hostUI.root.innerHTML,/开始游戏/);
+ assert.doesNotMatch(hostUI.root.innerHTML,/data-action="realRoomStart" disabled/);
+ const notReady=boot({storedId:id,roomApi:{getRoom:async()=>({...baseRoom,members:[{...members[0],is_ready:false},members[1]]})}});
+ await flush();await flush();
+ assert.match(notReady.root.innerHTML,/data-action="realRoomStart" disabled/);
+ const alone=boot({storedId:id,roomApi:{getRoom:async()=>({...baseRoom,members:[members[1]]})}});
+ await flush();await flush();
+ assert.match(alone.root.innerHTML,/data-action="realRoomStart" disabled/);
+ const guest=boot({me:{id:members[0].account_id,username:'Bob',email:'bob@example.com'},storedId:id,
+  roomApi:{getRoom:async()=>({...baseRoom,members:readyMembers})}});
+ await flush();await flush();
+ assert.doesNotMatch(guest.root.innerHTML,/data-action="realRoomStart"/);
+ const playing=boot({storedId:id,roomApi:{getRoom:async()=>({...baseRoom,state:'Playing',members:readyMembers})}});
+ await flush();await flush();
+ assert.match(playing.root.innerHTML,/游戏已开始/);
+ assert.match(playing.root.innerHTML,/真实 Game View、发牌和回合功能尚未接入/);
+ assert.doesNotMatch(playing.root.innerHTML,/data-action="realRoomStart"/);
+ assert.doesNotMatch(playing.root.innerHTML,/data-action="realRoomDisband"/);
+ assert.equal(playing.store.getItem('cabo.lastRealRoomId'),id);
+});
+test('Host Start click issues exactly one POST, renders Playing only after authoritative GET',async()=>{
+ let starts=0,finishGet,reads=0;
+ const ui=boot({storedId:id,roomApi:{
+  async getRoom(){
+   reads++;
+   if(reads===1)return {...baseRoom,members};
+   return new Promise(resolve=>finishGet=()=>resolve({...baseRoom,state:'Playing',members}));
+  },
+  async startGame(roomId){
+   assert.equal(roomId,id);starts++;
+   return {id:'123e4567-e89b-12d3-a456-426614174006',room_id:id,state:'InitialReveal',started_at:'2026-11-17T09:00:00Z'};
+  }
+ }});
+ await flush();await flush();
+ clickReal(ui,'realRoomStart');
+ await flush();
+ assert.equal(starts,1);
+ assert.equal(reads,2);
+ assert.equal(ui.rooms.state.view.state,'Lobby');
+ assert.equal(ui.rooms.state.pending,'read');
+ clickReal(ui,'realRoomStart');
+ assert.equal(starts,1);
+ finishGet();await flush();
+ assert.equal(ui.rooms.state.view.state,'Playing');
+ assert.match(ui.root.innerHTML,/游戏已开始/);
+ assert.doesNotMatch(ui.root.innerHTML,/data-action="realRoomStart"/);
+ assert.equal(ui.store.getItem('cabo.lastRealRoomId'),id);
+ assert.equal(ui.mockSends(),0);
+});
