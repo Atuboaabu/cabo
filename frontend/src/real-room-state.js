@@ -61,14 +61,14 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
     }catch { /* Storage unavailable, no session permission inferred. */ }
     return null;
   };
-  function reset(){
+  function reset({silent=false}={}){
     generation++; // Invalidate any outstanding create/join/GET response.
     queuedRoomChange=false;queuedCloseVerification=false;
     socket?.close();
     save(null);
     state.roomId=null;state.view=null;state.pending=null;state.error='';
     state.outcomeUnknown=false;state.joinCode='';state.stale=false;state.quietRead=false;
-    emit();
+    emit(silent?{silent:true}:undefined);
   }
   function setJoinCode(value){
     state.joinCode=String(value??'').toUpperCase();
@@ -218,7 +218,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
       if(token!==generation)return false;
       if(action==='leave'||action==='disband'){
         // Only a confirmed 204 clears the Room locator; Session stays intact.
-        reset();
+        reset({silent:true});
         return true;
       }
       state.pending='read';state.quietRead=true;emit({silent:true});
