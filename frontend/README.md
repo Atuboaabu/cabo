@@ -232,3 +232,29 @@ These are manual integration instructions, **not evidence of an executed two-acc
 In addition to silent WebSocket `room.changed` GETs, **user-initiated Ready / Unready / Kick / Leave / Disband** now avoid full-page re-renders while their HTTP requests are pending. Ready/Kick's acknowledged-write follow-up GET is quiet; no transient `正在更新准备状态`, `正在踢出成员`, or `正在同步服务器房间信息` banner is shown. Mutation controls are still visibly disabled during the operation, and the backend Room View remains authoritative (no optimistic Ready or member removal). The existing Room section is reconciled in place, with member DOM keyed by `account_id`; unchanged cards, seats, scroll position, account info, and buttons are retained. Real Room confirmation dialogs are inserted/removed independently of the page, rather than rebuilding the entire shell.
 
 A **successful Leave / Disband** must still change the Room section from Room View to the Create/Join entrance, but now performs one Room-local DOM update without rebuilding the account page. Genuine errors and server-revoked Room access remain visible; manual Refresh retains its explicit feedback. No changes to Auth, MockGateway or backend behavior.
+
+## Diagnosing Kick not closing the kicked player's real Room (opt-in)
+
+The frontend already implements `room-ws.js onclose → real-room-state.js GET /rooms/{id} → HTTP 403/404 clears Room navigation`. Do **not** infer a missing `onclose` from a stale UI alone.
+
+**Browser A (Host), browser B (kicked member), separate cookie stores:** open B's DevTools before joining, set `window.CABO_DEBUG_ROOM_WS = true` in the Console, then join the test Room. In Network → WS, confirm `/ws/rooms/{room_id}` returns **101 Switching Protocols** and stays connected. Compare the WebSocket target host with the HTTP Room API host; especially distinguish `localhost` from `127.0.0.1` because host-only cookies do not cross those hostnames. The browser WebSocket handshake must present an allowed real browser **Origin** and a session Cookie (inspect *presence*, never value). The development frontend HTTP proxy does **not** proxy WebSocket Upgrade; the WebSocket connects directly to the configured FastAPI origin.
+
+During Kick, expect these opt-in Console event names (metadata only; no Cookie/Token, error object, request body or payload is logged):
+
+- `[CABO room WS] connecting / open / close` with `room_id`, configured origin and close code (normally `1008`);
+- `[CABO room] close-callback` with `eligible`, `paused`, `pending`;
+- `[CABO room] close-recheck-queued / close-recheck-get / close-recheck-result` with Room UUID and HTTP status;
+- `[CABO room] room-access-revoked` after an authoritative GET 403/404.
+
+From the current backend, the FastAPI console also shows **`room_ws registered`**, **`room_ws authorized`** with `pid` and connection count, and **`room_ws kick_disconnect`** / **`room_ws kick_close_result`** with the same `room_id`, process PID, number of Room connections, number matched, attempted 1008 closes and failed close attempts. Host Leave/Disband instead produces `room_ws room_disconnect` / `room_ws room_close_result`. Logging does not include the Session Token, Cookie or account credentials. These messages appear after deploying this diagnostic branch.
+
+**Interpretation:**
+
+1. **No successful WS 101 / no `open`:** inspect handshake URL/host, Origin allowlist, Cookie presence and browser blocking. A successful HTTP login via the frontend proxy does not prove the direct FastAPI WebSocket shares the same Cookie host.
+2. **101 but no registered/authorized log in the same process:** WS was accepted but not fully registered/authorized; inspect the double membership verification or transient handshake failure.
+3. **Kick HTTP 204 with `matched=0`:** the HTTP worker could not find Bob's WS. Verify FastAPI runs **one worker** for a local reproduction; the manager is process-local and multiple workers/instances do not share its Room connections. Compare the `pid` on registered/authorized with kick_disconnect. Without shared cross-process notification, Kick in another worker cannot close Bob's socket.
+4. **`matched>0` but `failed>0`:** WS close failed; investigate the server transport. No automatic client retry is added.
+5. **`matched>0`, close 1008 arrives, but no GET:** check `close-callback.eligible` / `paused` / `pending` and whether the user switched Room or is already logged out. Pending Room GET/operation defers the follow-up verification.
+6. **GET 403/404 but old Room still visible:** inspect the real Room UI DOM transition. This branch includes a regression test for `onclose → GET 403 → Create/Join` in the existing UI harness. A real-browser DOM test is still required to prove it works with the native reconciler.
+
+A close code **does not itself prove Kick**: only GET 403/404 revokes Room access; GET 200 keeps the room. HTTP 5xx/network failures do not delete the Room. Do not turn on debug logging for normal user sessions; set `window.CABO_DEBUG_ROOM_WS = false` to disable it. No timers, reconnects, Redis or protocol changes are introduced. Do not post screenshots containing Cookie values or credentials.
