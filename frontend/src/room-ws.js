@@ -7,12 +7,13 @@ import {getAuthApiBaseUrl} from './auth-api.js';
 
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export function roomWebSocketUrl(roomId, baseUrl=globalThis.CABO_ROOM_WS_BASE_URL||getAuthApiBaseUrl()) {
+export function roomWebSocketUrl(roomId, baseUrl=globalThis.CABO_ROOM_WS_BASE_URL||getAuthApiBaseUrl(), pageProtocol=globalThis.location?.protocol) {
   if(typeof roomId!=='string'||!UUID.test(roomId))throw new TypeError('房间 ID 格式无效');
   // Validate the configured origin with the same rules as the existing API.
   const root=getAuthApiBaseUrl({CABO_API_BASE_URL:baseUrl});
   const url=new URL('/ws/rooms/'+roomId,root);
-  url.protocol=url.protocol==='https:'?'wss:':'ws:';
+  // HTTPS pages must never attempt a mixed-content ws:// handshake.
+  url.protocol=(pageProtocol==='https:'||url.protocol==='https:')?'wss:':'ws:';
   return url.href;
 }
 
