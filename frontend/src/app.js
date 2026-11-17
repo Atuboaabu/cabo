@@ -487,13 +487,18 @@ setInterval(()=>{
 },500);
 // A room socket may have failed to connect or its close notification may be
 // missed while the page is backgrounded. Revalidate on return, not by polling.
-let lastRoomFocusCheck=0;
+let roomFocusCheckScheduled=false;
 function recheckRoomOnFocus(){
- if(realAuthState!=='authenticated'||screen!=='real-account'||realBusy)return;
- const now=Date.now();
- if(now-lastRoomFocusCheck<1000)return; // Coalesce focus + visibilitychange.
- lastRoomFocusCheck=now;
- realRooms.verifyOnReturn();
+ if(realAuthState!=='authenticated'||screen!=='real-account'||realBusy||
+    roomFocusCheckScheduled)return;
+ roomFocusCheckScheduled=true;
+ // Coalesce focus + visibilitychange from the same foreground transition,
+ // without suppressing a later real tab return shortly after a Kick.
+ Promise.resolve().then(()=>{
+  roomFocusCheckScheduled=false;
+  if(realAuthState==='authenticated'&&screen==='real-account'&&!realBusy)
+   realRooms.verifyOnReturn();
+ });
 }
 window.addEventListener('focus',recheckRoomOnFocus);
 if(typeof document.addEventListener==='function'){
