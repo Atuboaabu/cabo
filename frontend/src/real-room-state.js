@@ -42,10 +42,6 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
     r.timer=setTimeoutFn(()=>{
       r.timer=null;
       if(!isRecoveryActive(r))return;
-      if(r.phase==='opening'){
-        socket?.close(); // Timed-out CONNECTING handshake, not a server kick.
-        r.phase='validate';
-      }
       r.due=true;
       drainRecovery();
     },delay);
@@ -61,7 +57,17 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
       try{
         if(socket?.reconnect(r.roomId)!==true)throw Error('socket unavailable');
         // OPEN, not constructor completion, confirms a successful connection.
-        if(r.phase==='opening')scheduleRecovery(r);
+        // This single handshake timeout prevents a stuck CONNECTING socket.
+        if(r.phase==='opening'){
+          r.timer=setTimeoutFn(()=>{
+            r.timer=null;
+            if(!isRecoveryActive(r)||r.phase!=='opening')return;
+            socket?.close(); // Detached local close, not a server kick.
+            r.phase='validate';
+            trace('reconnect-handshake-timeout',r.roomId);
+            scheduleRecovery(r);
+          },10000);
+        }
       }catch{
         if(!isRecoveryActive(r))return;
         r.phase='validate';
