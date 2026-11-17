@@ -33,13 +33,17 @@ function roomId(value) {
   }
   return value;
 }
-function errorMessage(status, code, isWrite) {
+function errorMessage(status, code, isWrite, kind) {
   if(status>=500) return isWrite
     ? '房间服务暂不可用，操作结果可能未知，请先查询房间状态。'
     : '房间服务暂不可用，请稍后重试。';
   if(status===401) return BUSINESS_ERRORS.INVALID_COOKIE;
   if(status===403) return '没有权限执行此操作，或请求来源不被允许。';
-  if(status===404) return BUSINESS_ERRORS[code]||'房间或目标成员不存在。';
+  if(status===404) return BUSINESS_ERRORS[code]||(kind==='start'
+    ? '开始游戏接口不可用或房间不存在，请检查服务地址和房间状态。'
+    : kind==='ready'
+      ? '准备状态接口不可用或房间不存在，请刷新房间核实。'
+      : '房间或目标成员不存在。');
   if(status===409) return BUSINESS_ERRORS[code]||'房间状态冲突，请刷新房间信息。';
   if(status===422) return '请求参数无效，请检查房间码或操作数据。';
   if(status===429) return '请求过于频繁，请稍后再试。';
@@ -88,7 +92,7 @@ export function createRoomApi({baseUrl=getAuthApiBaseUrl(),fetchImpl=globalThis.
         const body=await response.json();
         if(typeof body?.code==='string'&&/^[A-Z][A-Z0-9_]{0,63}$/.test(body.code))code=body.code;
       }catch{/* Do not expose untrusted backend details. */}
-      throw new RoomApiError(errorMessage(response.status,code,isWrite),response.status,code,isWrite&&response.status>=500);
+      throw new RoomApiError(errorMessage(response.status,code,isWrite,kind),response.status,code,isWrite&&response.status>=500);
     }
     if(successStatus===204)return null; // Never parse a 204 body.
     let data;

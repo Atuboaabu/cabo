@@ -243,3 +243,77 @@ test('Start HTTP 409 does not invent Playing or retry the write; refresh remains
  assert.equal(rooms.state.roomId,id);
  assert.equal(storage.getItem('cabo.lastRealRoomId'),id);
 });
+
+test('Start POST 404 does not show Kick member refresh advice or clear Room locator',async()=>{
+ const ready={...lobby,members:[hostMember,{...guestMember,is_ready:true}]};
+ for(const error of [
+  Object.assign(new Error('开始游戏接口不可用或房间不存在，请检查服务地址和房间状态。'),{status:404,code:'HTTP_ERROR'}),
+  Object.assign(new Error('房间不存在或已不可访问。'),{status:404,code:'ROOM_NOT_EXIST'})
+ ]){
+  let writes=0,reads=0;
+  const {rooms,storage}=setup({identity:host,view:ready,api:{
+   async startGame(){writes++;throw error;},
+   async getRoom(){reads++;return ready;}
+  }});
+  assert.equal(await rooms.startGame(),false);
+  assert.equal(writes,1);
+  assert.equal(reads,0,'POST failure must not be mistaken for post-201 GET failure');
+  assert.equal(rooms.state.roomId,id);
+  assert.equal(storage.getItem('cabo.lastRealRoomId'),id);
+  assert.equal(rooms.state.stale,true);
+  assert.match(rooms.state.error,new RegExp(error.message.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
+  assert.doesNotMatch(rooms.state.error,/目标成员|最新成员|操作可能已完成/);
+  assert.equal(await rooms.startGame(),false,'stale Room cannot repeat Start');
+  assert.equal(writes,1);
+ }
+});
+test('Kick POST 404 keeps member-specific refresh hint while Ready does not',async()=>{
+ const {rooms:hostRooms}=setup({identity:host,api:{
+  async kickMember(){throw fail(404);}
+ }});
+ assert.equal(await hostRooms.kickMember(guest),false);
+ assert.match(hostRooms.state.error,/请刷新房间查看最新成员/);
+ const {rooms:guestRooms}=setup({identity:guest,api:{
+  async setReady(){throw fail(404);}
+ }});
+ assert.equal(await guestRooms.setReady(true),false);
+ assert.doesNotMatch(guestRooms.state.error,/最新成员/);
+});
+test('Start 201 followed by transient GET failure explicitly warns Start may already have succeeded',async()=>{
+ const ready={...lobby,members:[hostMember,{...guestMember,is_ready:true}]};
+ for(const getError of [fail(503),fail(0)]){
+  let starts=0,reads=0;
+  const {rooms,storage}=setup({identity:host,view:ready,api:{
+   async startGame(){starts++;return {id:'123e4567-e89b-12d3-a456-426614174006',room_id:id,state:'InitialReveal',started_at:'2026-11-17T09:00:00Z'};},
+   async getRoom(){reads++;throw getError;}
+  }});
+  assert.equal(await rooms.startGame(),false);
+  assert.equal(starts,1);assert.equal(reads,1);
+  assert.match(rooms.state.error,/开始游戏请求已返回 201/);
+  assert.match(rooms.state.error,/游戏可能已成功开始/);
+  assert.match(rooms.state.error,/勿重复点击「开始游戏」/);
+  assert.doesNotMatch(rooms.state.error,/目标成员|最新成员/);
+  assert.equal(rooms.state.roomId,id);
+  assert.equal(rooms.state.view.state,'Lobby','never fabricate Playing');
+  assert.equal(storage.getItem('cabo.lastRealRoomId'),id);
+  assert.equal(rooms.state.stale,true);
+  assert.equal(await rooms.startGame(),false);
+  assert.equal(starts,1);
+ }
+});
+test('Start 201 then GET 404 is an access check, not a POST endpoint or member error',async()=>{
+ const ready={...lobby,members:[hostMember,{...guestMember,is_ready:true}]};
+ let starts=0;
+ const {rooms,storage}=setup({identity:host,view:ready,api:{
+  async startGame(){starts++;return {id:'123e4567-e89b-12d3-a456-426614174006',room_id:id,state:'InitialReveal',started_at:'2026-11-17T09:00:00Z'};},
+  async getRoom(){throw fail(404);}
+ }});
+ assert.equal(await rooms.startGame(),false);
+ assert.equal(starts,1);
+ assert.equal(rooms.state.roomId,null);
+ assert.equal(rooms.state.view,null);
+ assert.equal(storage.getItem('cabo.lastRealRoomId'),null);
+ assert.match(rooms.state.error,/开始游戏请求已返回 201/);
+ assert.match(rooms.state.error,/当前房间已无法访问/);
+ assert.doesNotMatch(rooms.state.error,/目标成员|最新成员|接口不可用|刷新房间/);
+});
