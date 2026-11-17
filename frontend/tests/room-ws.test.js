@@ -30,6 +30,7 @@ const tick=async()=>{await Promise.resolve();await Promise.resolve();await Promi
 test('ws/wss constructed from configured API origin without hardcoded hostname',()=>{
  assert.equal(roomWebSocketUrl(a,'http://api.example.test:8000'),'ws://api.example.test:8000/ws/rooms/'+a);
  assert.equal(roomWebSocketUrl(a,'https://api.example.test'),'wss://api.example.test/ws/rooms/'+a);
+ assert.equal(roomWebSocketUrl(a,'http://api.example.test','https:'),'wss://api.example.test/ws/rooms/'+a);
  assert.throws(()=>roomWebSocketUrl('../../auth/login','http://api.example.test'));
 });
 test('room.changed triggers authoritative GET, not rendering WS payload',async()=>{
