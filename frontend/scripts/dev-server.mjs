@@ -122,7 +122,7 @@ const server = createServer(async (req, res) => {
       // Development-only: direct browser API calls use this same-origin proxy.
       const html=bytes.toString().replace(
         '<script type="module" src="/src/app.js"></script>',
-        '<script>window.CABO_API_BASE_URL = window.CABO_API_BASE_URL || window.location.origin;window.CABO_ROOM_WS_BASE_URL = window.CABO_ROOM_WS_BASE_URL || '+JSON.stringify(backend.origin).replace(/</g,'\\u003c')+';</script><script type="module" src="/src/app.js"></script>'
+        '<script>window.CABO_API_BASE_URL = window.CABO_API_BASE_URL || window.location.origin;window.CABO_ROOM_WS_BASE_URL = window.CABO_ROOM_WS_BASE_URL || (new URL(window.CABO_API_BASE_URL).origin === window.location.origin ? '+JSON.stringify(backend.origin).replace(/</g,'\\u003c')+' : window.CABO_API_BASE_URL);</script><script type="module" src="/src/app.js"></script>'
       );
       bytes=Buffer.from(html);
     }
