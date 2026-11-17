@@ -17,8 +17,8 @@ export function roomWebSocketUrl(roomId, baseUrl=globalThis.CABO_ROOM_WS_BASE_UR
   return url.href;
 }
 
-export function createRoomSocket({onChanged,WebSocketImpl=globalThis.WebSocket,baseUrl}={}) {
-  if(typeof onChanged!=='function')throw new TypeError('需要房间变更回调');
+export function createRoomSocket({onChanged,onClosed=()=>{},WebSocketImpl=globalThis.WebSocket,baseUrl}={}) {
+  if(typeof onChanged!=='function'||typeof onClosed!=='function')throw new TypeError('需要房间通知回调');
   let socket=null,activeRoomId=null;
   function close(){
     const old=socket;
@@ -46,6 +46,14 @@ export function createRoomSocket({onChanged,WebSocketImpl=globalThis.WebSocket,b
          data.room_id.toLowerCase()===roomId.toLowerCase()){
         onChanged(roomId);
       }
+    };
+    ws.onclose=event=>{
+      if(socket!==ws||activeRoomId!==roomId)return;
+      // Keep the closed socket as a marker: subsequent verified GETs must
+      // not transparently reconnect until the caller explicitly closes it.
+      ws.onclose=null;
+      ws.onmessage=null;
+      onClosed(roomId,event?.code);
     };
     // No automatic reconnect. The manual refresh button stays available.
   }
