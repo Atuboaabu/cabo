@@ -188,7 +188,7 @@ def get_room_info(
     )
 
 @router.post(
-    "/{room_id}/start-game",
+    "/{room_id}/start",
     status_code=status.HTTP_201_CREATED,
     response_model=GameStartResponse,
     dependencies=[OriginCheckDep]
