@@ -708,3 +708,35 @@ test('stale onopen and retry timer after room switch cannot affect next room',as
  assert.equal(rooms.state.view.id,b);
  assert.equal(sockets.length,3);
 });
+
+test('focus verification during an active recovery timer does not cause duplicate GET',async()=>{
+ let reads=0;
+ const {rooms,sockets,clock}=setup({api:{getRoom:async()=>{reads++;return view(a);}}});
+ rooms.state.roomId=a;await rooms.refresh();
+ sockets[0].serverClose(1006);await tick();
+ assert.equal(reads,2);
+ assert.equal(clock.pending,1);
+ assert.equal(rooms.verifyOnReturn(),true);
+ await tick();
+ assert.equal(reads,2,'recovery already owns authoritative GET validation');
+ assert.equal(clock.pending,1,'focus must not create another retry timer');
+ await clock.advance(1000);
+ assert.equal(sockets.length,2);
+ sockets[1].open();await tick();
+ assert.equal(reads,3);
+});
+test('late close from replaced WebSocket cannot restart recovery after OPEN',async()=>{
+ let reads=0;
+ const {rooms,sockets,clock}=setup({api:{getRoom:async()=>{reads++;return view(a);}}});
+ rooms.state.roomId=a;await rooms.refresh();
+ const staleClose=sockets[0].onclose;
+ sockets[0].serverClose(1006);await tick();
+ await clock.advance(1000);
+ sockets[1].open();await tick();
+ const before=reads;
+ staleClose?.({code:1006});
+ await clock.advance(60000);
+ assert.equal(reads,before);
+ assert.equal(sockets.length,2);
+ assert.equal(clock.pending,0);
+});
