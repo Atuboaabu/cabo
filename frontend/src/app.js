@@ -30,10 +30,26 @@ const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const btn=(label,action,kind='outline',disabled=false)=>'<button type="button" class="'+kind+'" data-action="'+esc(action)+'" '+(disabled||busy?'disabled':'')+'>'+esc(label)+'</button>';
 const actions=()=>new Set(view.game?.legalActions||[]);
 const nav=x=>{screen=x;selected=[];render();};
+function realRoomDialogMarkup(){
+ if(!realRoomConfirmation)return '';
+ return '<div class="veil" data-real-room-dialog><section class="modal" role="dialog" aria-modal="true" aria-labelledby="real-room-modal-title"><h2 id="real-room-modal-title">'+esc(realRoomConfirmation.title)+'</h2><p>'+esc(realRoomConfirmation.message)+'</p><div class="button-row"><button type="button" class="outline" data-action="realRoomCancel">取消</button><button type="button" class="'+(realRoomConfirmation.danger?'danger':'primary')+'" data-action="realRoomApprove">确认</button></div></section></div>';
+}
+function showRealRoomDialog(){
+ const shell=root.querySelector('.app-shell');
+ if(shell?.insertAdjacentHTML){
+  shell.insertAdjacentHTML('beforeend',realRoomDialogMarkup());
+ }else render();
+}
+function dismissRealRoomDialog(){
+ realRoomConfirmation=null;
+ const modalNode=root.querySelector('[data-real-room-dialog]');
+ if(modalNode?.remove)modalNode.remove();
+ else render();
+}
 function shell(inner,cls=''){
  // Mock shell controls must never appear on the real account/Room page.
  const room=screen==='real-account'?null:view.room, account=screen==='real-account'?null:view.account;
- return '<div class="app-shell"><header class="topbar"><div class="brand"><span class="brand-icon">♤</span>cabo'+(room?'<span class="room-chip">房间 '+esc(room.id)+'</span>':'')+'</div><div class="top-actions"><span class="mock-tag">'+(screen==='real-account'?'真实账号 · FastAPI':screen==='auth'&&(realAuthState==='checking'||realAuthState==='unavailable')?'认证 · FastAPI':screen==='auth'&&authMode==='login'?'登录 · FastAPI':screen==='auth'&&(authMode==='register'||authMode==='registered')?'注册 · FastAPI':'◈ MOCK · 受限演示')+'</span>'+(account?btn('当前房间','lobby','small quiet')+btn('设置','settings','small quiet')+btn('退出','logout','small quiet'):'')+(screen==='real-account'?'':'<span class="connection '+esc(view.connection)+'">● '+({connected:'已连接',disconnected:'已断线','taken-over':'连接已被接管'}[view.connection]||'未连接')+'</span>')+'</div></header>'+(notice?'<div class="notice '+(notice.startsWith('✕')?'error':notice.startsWith('✓')?'success':'')+'" role="'+(notice.startsWith('✕')?'alert':'status')+'">'+esc(notice)+btn('×','dismiss','close')+'</div>':'')+'<main class="main '+cls+'">'+inner+'</main>'+(account?'<aside class="qa-strip" aria-label="Mock 场景"><strong>演示场景</strong>'+['disconnect','reconnect','takeover','reclaim','expireSession'].map((a,i)=>btn(['断线','重连','新设备接管','重新接管','会话过期'][i],a,'small outline')).join('')+'</aside>':'')+'<footer class="footer">一张圆桌，一起 CABO。</footer>'+(modal?'<div class="veil"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><h2 id="modal-title">'+esc(modal.title)+'</h2><p>'+esc(modal.message)+'</p><div class="button-row">'+btn('取消','cancelModal')+btn('确认','confirmModal',modal.danger?'danger':'primary')+'</div></section></div>':'')+(screen==='real-account'&&realRoomConfirmation?'<div class="veil"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="real-room-modal-title"><h2 id="real-room-modal-title">'+esc(realRoomConfirmation.title)+'</h2><p>'+esc(realRoomConfirmation.message)+'</p><div class="button-row"><button type="button" class="outline" data-action="realRoomCancel">取消</button><button type="button" class="'+(realRoomConfirmation.danger?'danger':'primary')+'" data-action="realRoomApprove">确认</button></div></section></div>':'')+'</div>';
+ return '<div class="app-shell"><header class="topbar"><div class="brand"><span class="brand-icon">♤</span>cabo'+(room?'<span class="room-chip">房间 '+esc(room.id)+'</span>':'')+'</div><div class="top-actions"><span class="mock-tag">'+(screen==='real-account'?'真实账号 · FastAPI':screen==='auth'&&(realAuthState==='checking'||realAuthState==='unavailable')?'认证 · FastAPI':screen==='auth'&&authMode==='login'?'登录 · FastAPI':screen==='auth'&&(authMode==='register'||authMode==='registered')?'注册 · FastAPI':'◈ MOCK · 受限演示')+'</span>'+(account?btn('当前房间','lobby','small quiet')+btn('设置','settings','small quiet')+btn('退出','logout','small quiet'):'')+(screen==='real-account'?'':'<span class="connection '+esc(view.connection)+'">● '+({connected:'已连接',disconnected:'已断线','taken-over':'连接已被接管'}[view.connection]||'未连接')+'</span>')+'</div></header>'+(notice?'<div class="notice '+(notice.startsWith('✕')?'error':notice.startsWith('✓')?'success':'')+'" role="'+(notice.startsWith('✕')?'alert':'status')+'">'+esc(notice)+btn('×','dismiss','close')+'</div>':'')+'<main class="main '+cls+'">'+inner+'</main>'+(account?'<aside class="qa-strip" aria-label="Mock 场景"><strong>演示场景</strong>'+['disconnect','reconnect','takeover','reclaim','expireSession'].map((a,i)=>btn(['断线','重连','新设备接管','重新接管','会话过期'][i],a,'small outline')).join('')+'</aside>':'')+'<footer class="footer">一张圆桌，一起 CABO。</footer>'+(modal?'<div class="veil"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><h2 id="modal-title">'+esc(modal.title)+'</h2><p>'+esc(modal.message)+'</p><div class="button-row">'+btn('取消','cancelModal')+btn('确认','confirmModal',modal.danger?'danger':'primary')+'</div></section></div>':'')+(screen==='real-account'?realRoomDialogMarkup():'')+'</div>';
 }
 function realRoomPanel(){
  const room=realRooms.state,waiting=!!room.pending;
@@ -113,6 +129,9 @@ function syncRoomNode(current,next){
 function renderSilentRoom(){
  const section=root.querySelector('.real-room-area');
  if(!section)return false;
+ if(typeof document.createElement!=='function'){
+  section.outerHTML=realRoomPanel();return true;
+ }
  const template=document.createElement('template');
  template.innerHTML=realRoomPanel();
  syncRoomNode(section,template.content.firstElementChild);
@@ -378,14 +397,13 @@ function confirmRealRoom(action,targetAccountId){
   danger=true;
  }else return;
  realRoomConfirmation={action,targetAccountId,roomId:r.roomId,title,message,danger};
- render();
+ showRealRoomDialog();
 }
 function approveRealRoom(){
  const c=realRoomConfirmation;
- realRoomConfirmation=null;
+ dismissRealRoomDialog();
  if(!c||c.roomId!==realRooms.state.roomId||realAuthState!=='authenticated'||
-    screen!=='real-account'||realBusy||!realRooms.allowedMutation(c.action,c.targetAccountId)){render();return;}
- render();
+    screen!=='real-account'||realBusy||!realRooms.allowedMutation(c.action,c.targetAccountId))return;
  if(c.action==='leave')realRooms.leaveRoom();
  if(c.action==='kick')realRooms.kickMember(c.targetAccountId);
  if(c.action==='disband')realRooms.disbandRoom();
@@ -402,7 +420,7 @@ root.addEventListener('click',e=>{
  if(a==='realRoomCreate'&&realAuthState==='authenticated'&&screen==='real-account'){realRooms.createRoom();return;}
  if(a==='realRoomRefresh'&&realAuthState==='authenticated'&&screen==='real-account'){realRooms.refresh();return;}
  if(a==='realRoomRecheck'&&realAuthState==='authenticated'&&screen==='real-account'){restoreRealSession({skipRoomRestore:true});return;}
- if(a==='realRoomCancel'){realRoomConfirmation=null;render();return;}
+ if(a==='realRoomCancel'){dismissRealRoomDialog();return;}
  if(a==='realRoomApprove'){approveRealRoom();return;}
  if(a==='realRoomReady'&&realAuthState==='authenticated'&&screen==='real-account'){
   const me=realRooms.state.view?.members.find(m=>m.account_id===realAccount.id);
