@@ -485,6 +485,22 @@ setInterval(()=>{
  root.querySelectorAll('[data-deadline]').forEach(el=>{const d=Number(el.dataset.deadline)||null;el.textContent=(el.id==='timer'?'⏱ ':'')+formatRemaining(d);});
  updateVerificationCountdown();
 },500);
+// A room socket may have failed to connect or its close notification may be
+// missed while the page is backgrounded. Revalidate on return, not by polling.
+let lastRoomFocusCheck=0;
+function recheckRoomOnFocus(){
+ if(realAuthState!=='authenticated'||screen!=='real-account'||realBusy)return;
+ const now=Date.now();
+ if(now-lastRoomFocusCheck<1000)return; // Coalesce focus + visibilitychange.
+ lastRoomFocusCheck=now;
+ realRooms.verifyOnReturn();
+}
+window.addEventListener('focus',recheckRoomOnFocus);
+if(typeof document.addEventListener==='function'){
+ document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible')recheckRoomOnFocus();
+ });
+}
 window.addEventListener('pagehide',()=>realRooms.pauseNotifications());
 window.addEventListener('pageshow',e=>{if(e.persisted)restoreRealSession();});
 window.addEventListener('keydown',e=>{if(screen!=='real-account'&&e.altKey&&e.shiftKey&&e.key.toLowerCase()==='m'){e.preventDefault();confirm('模拟新设备接管','旧连接会停止接受受保护操作。','takeover');}});
