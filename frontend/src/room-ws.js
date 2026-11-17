@@ -43,9 +43,10 @@ export function createRoomSocket({onChanged,onClosed=()=>{},onOpen=()=>{},WebSoc
     const url=roomWebSocketUrl(roomId,baseUrl);
     const ws=new WebSocketImpl(url);
     socket=ws;activeRoomId=roomId;
+    let closeNotified=false;
     trace('connecting',roomId,{origin:new URL(url).origin});
     ws.onopen=()=>{
-      if(socket!==ws)return;
+      if(socket!==ws||closeNotified)return;
       trace('open',roomId);
       onOpen(roomId);
     };
@@ -63,11 +64,14 @@ export function createRoomSocket({onChanged,onClosed=()=>{},onOpen=()=>{},WebSoc
       }
     };
     ws.onclose=event=>{
-      if(socket!==ws||activeRoomId!==roomId)return;
+      if(socket!==ws||activeRoomId!==roomId||closeNotified)return;
+      closeNotified=true;
       // Keep the closed socket as a marker: subsequent verified GETs must
       // not transparently reconnect until the caller explicitly closes it.
       ws.onclose=null;
       ws.onmessage=null;
+      ws.onopen=null;
+      ws.onerror=null;
       trace('close',roomId,{code:event?.code,clean:event?.wasClean===true});
       onClosed(roomId,event?.code);
     };
