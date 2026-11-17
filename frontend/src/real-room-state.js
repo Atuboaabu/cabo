@@ -334,6 +334,12 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
     const target=payload?.targetAccountId;
     if(!allowedMutation(action,target))return false;
     const id=state.roomId, token=generation;
+    if(action==='leave'||action==='disband'){
+      // User-initiated terminal operations stop recovery immediately, not
+      // only after HTTP 204. Unknown outcomes still preserve the Room locator.
+      cancelRecovery();
+      socket?.close();
+    }
     state.pending=action;
     state.quietRead=false;
     state.error='';
