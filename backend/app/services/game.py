@@ -66,7 +66,7 @@ def start_game(
         now = datetime.now(timezone.utc)
         game_session = GameSession(
             room_id=room.id,
-            state="Starting",
+            state="Playing",
             started_at=now,
             ended_at=None
         )
