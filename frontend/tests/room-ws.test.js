@@ -371,3 +371,91 @@ test('server close during pending GET invalidates old response, then revalidates
  assert.equal(rooms.state.roomId,null);
  assert.equal(rooms.state.view,null);
 });
+
+test('opt-in WS diagnostics log lifecycle and GET status without sensitive headers',async()=>{
+ const logs=[],oldInfo=console.info,oldDebug=globalThis.CABO_DEBUG_ROOM_WS;
+ let reads=0;
+ try{
+  console.info=(...args)=>logs.push(args);
+  globalThis.CABO_DEBUG_ROOM_WS=true;
+  const {rooms,sockets}=setup({api:{getRoom:async()=>{
+   if(++reads===1)return view(a);
+   throw Object.assign(new Error('forbidden'),{status:403});
+  }}});
+  rooms.state.roomId=a;
+  await rooms.refresh();
+  sockets[0].onopen?.();
+  sockets[0].serverClose(1008);
+  await tick();
+  assert.equal(rooms.state.roomId,null);
+  const summary=JSON.stringify(logs);
+  assert.match(summary,/connecting/);
+  assert.match(summary,/open/);
+  assert.match(summary,/close-callback/);
+  assert.match(summary,/close-recheck-get/);
+  assert.match(summary,/close-recheck-result/);
+  assert.match(summary,/"status":403/);
+  assert.match(summary,/room-access-revoked/);
+  assert.doesNotMatch(summary,/Cookie|session_token|Authorization|password|request_body/i);
+ }finally{
+  console.info=oldInfo;
+  if(oldDebug===undefined)delete globalThis.CABO_DEBUG_ROOM_WS;
+  else globalThis.CABO_DEBUG_ROOM_WS=oldDebug;
+ }
+});
+
+test('returning to foreground revokes kicked Room even if WebSocket close was missed',async()=>{
+ let reads=0;const storage=store();
+ const {rooms,sockets}=setup({storage,api:{getRoom:async()=>{
+  if(++reads===1)return view(a);
+  throw Object.assign(new Error('no longer a member'),{status:403});
+ }}});
+ rooms.state.roomId=a;await rooms.refresh();
+ assert.equal(sockets.length,1);
+ assert.equal(rooms.verifyOnReturn(),true);
+ await tick();
+ assert.equal(reads,2);
+ assert.equal(rooms.state.roomId,null);
+ assert.equal(rooms.state.view,null);
+ assert.equal(storage.getItem('cabo.lastRealRoomId'),null);
+ assert.equal(sockets[0].closed,true);
+});
+test('foreground check with GET 200 keeps Room without duplicate socket',async()=>{
+ let reads=0;
+ const {rooms,sockets}=setup({api:{getRoom:async()=>{reads++;return view(a);}}});
+ rooms.state.roomId=a;await rooms.refresh();
+ assert.equal(rooms.verifyOnReturn(),true);
+ await tick();
+ assert.equal(reads,2);
+ assert.equal(rooms.state.roomId,a);
+ assert.equal(sockets.length,1);
+});
+test('foreground verification during an old GET discards stale 200 and checks again',async()=>{
+ let reads=0,finishOld;
+ const {rooms,sockets}=setup({api:{getRoom:async()=>{
+  reads++;
+  if(reads===1)return view(a);
+  if(reads===2)return new Promise(resolve=>finishOld=resolve);
+  throw Object.assign(new Error('kicked'),{status:403});
+ }}});
+ rooms.state.roomId=a;await rooms.refresh();
+ const earlier=rooms.refresh();
+ assert.equal(reads,2);
+ rooms.verifyOnReturn();
+ finishOld({...view(a),members:[{...view(a).members[0],username:'Outdated'}]});
+ await earlier;await tick();
+ assert.equal(reads,3);
+ assert.equal(rooms.state.view,null);
+ assert.equal(rooms.state.roomId,null);
+ assert.equal(sockets[0].closed,true);
+});
+test('foreground check is ignored while real Room notifications are paused or Room absent',async()=>{
+ let reads=0;
+ const {rooms}=setup({api:{getRoom:async()=>{reads++;return view(a);}}});
+ assert.equal(rooms.verifyOnReturn(),false);
+ rooms.state.roomId=a;await rooms.refresh();
+ rooms.pauseNotifications();
+ assert.equal(rooms.verifyOnReturn(),false);
+ await tick();
+ assert.equal(reads,1);
+});

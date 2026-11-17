@@ -6,6 +6,11 @@
 import {getAuthApiBaseUrl} from './auth-api.js';
 
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Opt-in diagnostics: no Cookie, token, payload or exception objects.
+const trace=(event,roomId,detail={})=>{
+  if(globalThis.CABO_DEBUG_ROOM_WS===true)
+    console.info('[CABO room WS]',event,{room_id:roomId,...detail});
+};
 
 export function roomWebSocketUrl(roomId, baseUrl=globalThis.CABO_ROOM_WS_BASE_URL||getAuthApiBaseUrl(), pageProtocol=globalThis.location?.protocol) {
   if(typeof roomId!=='string'||!UUID.test(roomId))throw new TypeError('房间 ID 格式无效');
@@ -38,12 +43,20 @@ export function createRoomSocket({onChanged,onClosed=()=>{},WebSocketImpl=global
     const url=roomWebSocketUrl(roomId,baseUrl);
     const ws=new WebSocketImpl(url);
     socket=ws;activeRoomId=roomId;
+    trace('connecting',roomId,{origin:new URL(url).origin});
+    ws.onopen=()=>{
+      if(socket===ws)trace('open',roomId);
+    };
+    ws.onerror=()=>{
+      if(socket===ws)trace('error',roomId);
+    };
     ws.onmessage=event=>{
       if(socket!==ws||activeRoomId!==roomId)return;
       let data;
       try{data=JSON.parse(event.data);}catch{return;}
       if(data?.type==='room.changed'&&typeof data.room_id==='string'&&
          data.room_id.toLowerCase()===roomId.toLowerCase()){
+        trace('room.changed',roomId);
         onChanged(roomId);
       }
     };
@@ -53,6 +66,7 @@ export function createRoomSocket({onChanged,onClosed=()=>{},WebSocketImpl=global
       // not transparently reconnect until the caller explicitly closes it.
       ws.onclose=null;
       ws.onmessage=null;
+      trace('close',roomId,{code:event?.code,clean:event?.wasClean===true});
       onClosed(roomId,event?.code);
     };
     // No automatic reconnect. The manual refresh button stays available.

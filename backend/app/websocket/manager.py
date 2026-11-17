@@ -1,8 +1,12 @@
 import asyncio
+import os
+from logging import getLogger
 from uuid import UUID
 from fastapi import WebSocket
 
 from dataclasses import dataclass
+
+logger = getLogger(__name__)
 
 @dataclass
 class RoomConnection:
@@ -38,6 +42,10 @@ class RoomConnectionManager:
                     False
                 )
             )
+            logger.info(
+                "room_ws registered room_id=%s pid=%d connections=%d",
+                room_id, os.getpid(), len(self.connections[room_id])
+            )
 
     async def authorize(
         self,
@@ -55,6 +63,10 @@ class RoomConnectionManager:
                 return False
             
             connection.authorized = True
+            logger.info(
+                "room_ws authorized room_id=%s pid=%d connections=%d",
+                room_id, os.getpid(), len(connection_dict)
+            )
             return True
 
     def _disconnect_unlocked(
@@ -90,27 +102,30 @@ class RoomConnectionManager:
     )->None:
         lock = self.get_room_lock(room_id)
         async with lock:
-            connection_dict = self.connections.get(room_id)
-            if not connection_dict:
-                return
-        
+            connection_dict = self.connections.get(room_id, {})
+            before_count = len(connection_dict)
             targets = [
                 ws
                 for ws, connection in connection_dict.items()
                 if connection.account_id == account_id
             ]
-
             for ws in targets:
                 self._disconnect_unlocked(room_id, ws)
 
-        await asyncio.gather(
-            *(
-                ws.close(code=1008)
-                for ws in targets
-            ),
+        logger.info(
+            "room_ws kick_disconnect room_id=%s pid=%d room_connections=%d matched=%d",
+            room_id, os.getpid(), before_count, len(targets)
+        )
+        results = await asyncio.gather(
+            *(ws.close(code=1008) for ws in targets),
             return_exceptions=True
         )
-    
+        logger.info(
+            "room_ws kick_close_result room_id=%s pid=%d attempted=%d failed=%d",
+            room_id, os.getpid(), len(targets),
+            sum(isinstance(result, Exception) for result in results)
+        )
+
     async def room_disconnect(
         self,
         room_id: UUID
@@ -120,14 +135,20 @@ class RoomConnectionManager:
             connection_dict = self.connections.pop(room_id, {})
             targets = list(connection_dict.keys())
 
-        await asyncio.gather(
-            *(
-                ws.close(code=1008)
-                for ws in targets
-            ),
+        logger.info(
+            "room_ws room_disconnect room_id=%s pid=%d targets=%d",
+            room_id, os.getpid(), len(targets)
+        )
+        results = await asyncio.gather(
+            *(ws.close(code=1008) for ws in targets),
             return_exceptions=True
         )
-    
+        logger.info(
+            "room_ws room_close_result room_id=%s pid=%d attempted=%d failed=%d",
+            room_id, os.getpid(), len(targets),
+            sum(isinstance(result, Exception) for result in results)
+        )
+
     async def broadcast(
         self,
         room_id,

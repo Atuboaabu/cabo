@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { runInNewContext } from 'node:vm';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 function listen(server) {
@@ -64,13 +65,22 @@ test('development proxy preserves auth Cookie, Origin, status and separate Set-C
  t.after(()=>{child.kill();});
  const base='http://127.0.0.1:'+port;
  const origin='http://localhost:5173';
- // The HTTP proxy is not a WebSocket upgrade proxy: the served page must
- // configure direct WS to the actual FastAPI origin, not localhost:5173.
+ // The HTTP proxy does not handle WS upgrades. Direct backend WS must
+ // reuse the browser's loopback hostname for its host-only login cookie.
  const index=await fetch(base+'/');
  assert.equal(index.status,200);
  const html=await index.text();
  assert.match(html,/CABO_ROOM_WS_BASE_URL/);
  assert.ok(html.includes('http://127.0.0.1:'+backendPort));
+ const configScript=html.split('<script>')[1]?.split('</script>')[0];
+ assert.ok(configScript);
+ const localhostWindow={location:{origin:'http://localhost:'+port,hostname:'localhost'}};
+ runInNewContext(configScript,{window:localhostWindow,URL});
+ assert.equal(localhostWindow.CABO_API_BASE_URL,'http://localhost:'+port);
+ assert.equal(localhostWindow.CABO_ROOM_WS_BASE_URL,'http://localhost:'+backendPort);
+ const ipWindow={location:{origin:'http://127.0.0.1:'+port,hostname:'127.0.0.1'}};
+ runInNewContext(configScript,{window:ipWindow,URL});
+ assert.equal(ipWindow.CABO_ROOM_WS_BASE_URL,'http://127.0.0.1:'+backendPort);
  const login=await fetch(base+'/auth/login',{
   method:'POST',
   headers:{Origin:origin,'Content-Type':'application/json'},
