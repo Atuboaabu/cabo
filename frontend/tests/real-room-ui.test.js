@@ -272,7 +272,7 @@ test('in-flight real Lobby mutation disables all conflicting controls',async()=>
  clickReal(ui,'realRoomApprove');
  await flush();
  const html=ui.root.innerHTML;
- assert.match(html,/正在踢出成员/);
+ assert.doesNotMatch(html,/正在踢出成员/,'Lobby mutations must not show a loading banner');
  assert.match(html,/data-action="realRoomLeave" disabled/);
  assert.match(html,/data-action="realRoomDisband" disabled/);
  assert.match(html,/data-action="realRoomKick:[^"]+" disabled/);
