@@ -156,12 +156,22 @@ class RoomConnectionManager:
                 return_exceptions=True
             )
 
+            failed_connections: list[WebSocket] = []
             for ws, result in zip(targets, results):
                 if isinstance(result, Exception):
                     self._disconnect_unlocked(
                         room_id,
                         ws
                     )
+                    failed_connections.append(ws)
+        
+        await asyncio.gather(
+            *(
+                conn.close(code=1008)
+                for conn in failed_connections
+            ),
+            return_exceptions=True
+        )
 
 manager = RoomConnectionManager()
 
