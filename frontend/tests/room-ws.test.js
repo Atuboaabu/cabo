@@ -16,6 +16,7 @@ class FakeWebSocket{
  constructor(url){this.url=url;this.closed=false;FakeWebSocket.sockets.push(this);}
  close(){this.closed=true;}
  sendMessage(data){this.onmessage?.({data:JSON.stringify(data)});}
+ serverClose(code=1008){this.closed=true;this.onclose?.({code});}
 }
 const setup=({api,storage=store(),onChange=()=>{}}={})=>{
  FakeWebSocket.sockets=[];
@@ -276,4 +277,97 @@ test('transient notification GET failure keeps old Room and avoids error flash',
  assert.equal(rooms.state.view.members[0].username,'Alice');
  assert.equal(await rooms.refresh(),false,'manual refresh still reports a real error');
  assert.match(rooms.state.error,/temporary outage/);
+});
+
+test('server 1008 Kick close rechecks Room, then revokes access on GET 403',async()=>{
+ let reads=0;const storage=store(),emitted=[];
+ const {rooms,sockets}=setup({storage,onChange:(state)=>emitted.push({roomId:state.roomId,error:state.error}),api:{
+  getRoom:async()=>{if(++reads===1)return view(a);throw Object.assign(new Error('forbidden'),{status:403});}
+ }});
+ rooms.state.roomId=a;await rooms.refresh();
+ sockets[0].serverClose(1008);await tick();
+ assert.equal(reads,2);
+ assert.equal(rooms.state.roomId,null);
+ assert.equal(rooms.state.view,null);
+ assert.equal(storage.getItem('cabo.lastRealRoomId'),null);
+ assert.match(rooms.state.error,/当前房间已关闭或你已不在房间/);
+ assert.equal(sockets.length,1,'closed socket cannot auto reconnect');
+});
+test('Host Disband or Leave close revalidates and revokes Room on GET 404',async()=>{
+ for(const code of [1008,1000]){
+  let reads=0;
+  const {rooms,sockets}=setup({api:{getRoom:async()=>{
+   if(++reads===1)return view(a);
+   throw Object.assign(new Error('missing'),{status:404});
+  }}});
+  rooms.state.roomId=a;await rooms.refresh();
+  sockets[0].serverClose(code);await tick();
+  assert.equal(reads,2);
+  assert.equal(rooms.state.roomId,null);
+  assert.equal(sockets.length,1);
+ }
+});
+test('unexpected network WS close with GET 200 keeps Room and does not reconnect',async()=>{
+ let reads=0;const {rooms,sockets}=setup({api:{getRoom:async()=>{reads++;return view(a);}}});
+ rooms.state.roomId=a;await rooms.refresh();
+ sockets[0].serverClose(1006);await tick();
+ assert.equal(reads,2);
+ assert.equal(rooms.state.roomId,a);
+ assert.equal(rooms.state.view.members[0].username,'Alice');
+ assert.equal(sockets.length,1);
+ await rooms.refresh();
+ assert.equal(reads,3);
+ assert.equal(sockets.length,1,'manual GET must not reconnect a closed socket');
+});
+test('local Leave, Disband, and pause do not trigger verification from local close',async()=>{
+ for(const action of ['leaveRoom','disbandRoom','pauseNotifications']){
+  let reads=0;
+  const {rooms,sockets}=setup({api:{
+   getRoom:async()=>{reads++;return view(a);},
+   leaveRoom:async()=>null,disbandRoom:async()=>null
+  }});
+  rooms.state.roomId=a;await rooms.refresh();
+  const oldClose=sockets[0].onclose;
+  if(action==='pauseNotifications')rooms.pauseNotifications();
+  else await rooms[action]();
+  oldClose?.({code:1000});await tick();
+  assert.equal(reads,1,action+' must not cause a redundant GET');
+  assert.equal(sockets[0].closed,true);
+ }
+});
+test('late close event from old Room cannot invalidate new Room',async()=>{
+ let reads=0;const {rooms,sockets}=setup({api:{
+  createRoom:async()=>({id:b,room_code:'ABC234',host_account_id:member,state:'Lobby'}),
+  getRoom:async id=>{reads++;return view(id);}
+ }});
+ rooms.state.roomId=a;await rooms.refresh();
+ const oldClose=sockets[0].onclose;
+ rooms.reset();
+ await rooms.createRoom();
+ assert.equal(rooms.state.roomId,b);
+ const before=reads;
+ oldClose?.({code:1008});await tick();
+ assert.equal(reads,before);
+ assert.equal(rooms.state.roomId,b);
+ assert.equal(rooms.state.view.id,b);
+});
+test('server close during pending GET invalidates old response, then revalidates',async()=>{
+ let reads=0,resolveOld,resolveNew;
+ const {rooms,sockets}=setup({api:{getRoom:async()=>{
+  reads++;
+  if(reads===1)return view(a);
+  if(reads===2)return new Promise(resolve=>resolveOld=resolve);
+  if(reads===3)return new Promise((resolve,reject)=>resolveNew=()=>reject(Object.assign(new Error('kicked'),{status:403})));
+ }}});
+ rooms.state.roomId=a;await rooms.refresh();
+ const pending=rooms.refresh();
+ sockets[0].serverClose(1008);
+ assert.equal(reads,2,'close does not start concurrent GET');
+ resolveOld({...view(a),members:[{...view(a).members[0],username:'Stale'}]});
+ await pending;await tick();
+ assert.equal(reads,3,'one queued verification GET');
+ assert.equal(rooms.state.view.members[0].username,'Alice','late 200 must not overwrite state');
+ resolveNew();await tick();
+ assert.equal(rooms.state.roomId,null);
+ assert.equal(rooms.state.view,null);
 });
