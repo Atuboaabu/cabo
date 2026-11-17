@@ -226,3 +226,9 @@ In a test FastAPI/PostgreSQL environment, sign in Alice (Host) and Bob (member) 
 6. Force a close during a pending Room GET: the pending response is ignored; the queued follow-up GET determines current access. Verify that neither stale members nor a spurious kick message appear.
 
 These are manual integration instructions, **not evidence of an executed two-account E2E test**.
+
+## Lobby interaction flicker fix
+
+In addition to silent WebSocket `room.changed` GETs, **user-initiated Ready / Unready / Kick / Leave / Disband** now avoid full-page re-renders while their HTTP requests are pending. Ready/Kick's acknowledged-write follow-up GET is quiet; no transient `正在更新准备状态`, `正在踢出成员`, or `正在同步服务器房间信息` banner is shown. Mutation controls are still visibly disabled during the operation, and the backend Room View remains authoritative (no optimistic Ready or member removal). The existing Room section is reconciled in place, with member DOM keyed by `account_id`; unchanged cards, seats, scroll position, account info, and buttons are retained. Real Room confirmation dialogs are inserted/removed independently of the page, rather than rebuilding the entire shell.
+
+A **successful Leave / Disband** must still change the screen from Room View to the Create/Join entrance, but now causes only the necessary final navigation transition. Genuine errors and server-revoked Room access remain visible; manual Refresh retains its explicit feedback. No changes to Auth, MockGateway or backend behavior.
