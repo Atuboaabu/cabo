@@ -12,7 +12,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
     roomId:null,view:null,pending:null,error:'',outcomeUnknown:false,
     joinCode:'',stale:false,quietRead:false
   };
-  let generation=0,queuedRoomChange=false,queuedCloseVerification=false,notificationsPaused=false;
+  let generation=0,queuedRoomChange=false,queuedCloseVerification=false,queuedReturnVerification=false,notificationsPaused=false;
   const socket=createSocket?.({
     onChanged:roomId=>{
       if(roomId.toLowerCase()!==state.roomId?.toLowerCase()||!state.view||
@@ -36,17 +36,27 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
     try{socket?.connect(id);}catch{/* HTTP Room View remains authoritative. */}
   }
   function pauseNotifications(){
-    notificationsPaused=true;queuedRoomChange=false;queuedCloseVerification=false;socket?.close();
+    notificationsPaused=true;queuedRoomChange=false;queuedCloseVerification=false;queuedReturnVerification=false;socket?.close();
   }
   function resumeNotifications(){
     notificationsPaused=false;
     if(state.roomId&&state.view)openRoomSocket(state.roomId);
+  }
+  function verifyOnReturn(){
+    // A missed WebSocket close cannot be distinguished from a healthy socket.
+    // Re-check membership once when the tab/window comes back to the foreground.
+    if(notificationsPaused||!state.roomId||!state.view)return false;
+    queuedRoomChange=true;
+    queuedReturnVerification=true;
+    flushRoomChange();
+    return true;
   }
   function flushRoomChange(){
     if(!queuedRoomChange||state.pending||!state.roomId||!state.view||notificationsPaused)return;
     queuedRoomChange=false;
     const fromClose=queuedCloseVerification;
     queuedCloseVerification=false;
+    queuedReturnVerification=false;
     void readRoom(state.roomId,{silent:true,fromClose});
   }
   const save=id=>{
@@ -63,7 +73,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
   };
   function reset({silent=false}={}){
     generation++; // Invalidate any outstanding create/join/GET response.
-    queuedRoomChange=false;queuedCloseVerification=false;
+    queuedRoomChange=false;queuedCloseVerification=false;queuedReturnVerification=false;
     socket?.close();
     save(null);
     state.roomId=null;state.view=null;state.pending=null;state.error='';
@@ -107,7 +117,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
       const room=await api.getRoom(id);
       // A socket close during an older GET requires a fresh authorization
       // check. Discard that older response before any UI mutation.
-      if(token!==generation||queuedCloseVerification)return false;
+      if(token!==generation||queuedCloseVerification||queuedReturnVerification)return false;
       if(room.id.toLowerCase()!==id.toLowerCase())throw Error('服务端返回的房间 ID 不一致，请重新验证。');
       changed=JSON.stringify(state.view)!==JSON.stringify(room)||!!state.error||state.stale;
       state.roomId=id;state.view=room;state.error='';state.stale=false;
@@ -116,7 +126,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
       openRoomSocket(id);
       return true;
     }catch(error){
-      if(token===generation&&!queuedCloseVerification){
+      if(token===generation&&!queuedCloseVerification&&!queuedReturnVerification){
         if(!background || [401,403,404].includes(error?.status)){
           failure(error,'read');
           if(fromClose&&(error?.status===403||error?.status===404)){
@@ -224,7 +234,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
       state.pending='read';state.quietRead=true;emit({silent:true});
       try{
         const latest=await api.getRoom(id);
-        if(token!==generation||queuedCloseVerification)return false;
+        if(token!==generation||queuedCloseVerification||queuedReturnVerification)return false;
         if(latest.id.toLowerCase()!==id.toLowerCase())throw Error('服务端返回的房间 ID 不一致，请刷新房间。');
         state.view=latest;
         openRoomSocket(id);
@@ -233,7 +243,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
         state.error='';
         return true;
       }catch(error){
-        if(token!==generation||queuedCloseVerification)return false;
+        if(token!==generation||queuedCloseVerification||queuedReturnVerification)return false;
         failure(error,'read');
         // A confirmed write followed by an authoritative 403/404 means the
         // Room locator has been invalidated. No Room ID remains to refresh.
@@ -258,5 +268,5 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
   async function leaveRoom(){return mutate('leave');}
   async function kickMember(targetAccountId){return mutate('kick',{targetAccountId});}
   async function disbandRoom(){return mutate('disband');}
-  return {state,reset,setJoinCode,createRoom,joinRoom,restore,refresh,setReady,leaveRoom,kickMember,disbandRoom,allowedMutation,pauseNotifications,resumeNotifications};
+  return {state,reset,setJoinCode,createRoom,joinRoom,restore,refresh,setReady,leaveRoom,kickMember,disbandRoom,allowedMutation,pauseNotifications,resumeNotifications,verifyOnReturn};
 }
