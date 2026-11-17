@@ -207,4 +207,8 @@ async def start_game(
         room_id
     )
 
+    await notification_room_changed(room_id)
+
+    await manager.room_disconnect(room_id)
+
     return response
