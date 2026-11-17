@@ -272,7 +272,7 @@ test('in-flight real Lobby mutation disables all conflicting controls',async()=>
  clickReal(ui,'realRoomApprove');
  await flush();
  const html=ui.root.innerHTML;
- assert.match(html,/正在踢出成员/);
+ assert.doesNotMatch(html,/正在踢出成员/,'Lobby mutations must not show a loading banner');
  assert.match(html,/data-action="realRoomLeave" disabled/);
  assert.match(html,/data-action="realRoomDisband" disabled/);
  assert.match(html,/data-action="realRoomKick:[^"]+" disabled/);
@@ -311,4 +311,96 @@ test('WebSocket Room update patches only Room area, without full-screen flicker'
  ui.notify(id);
  await flush();
  assert.equal(patches.length,1,'identical Room View should not redraw');
+});
+
+test('Ready and Unready update only Room region without full-page loading redraw',async()=>{
+ const guest={id:members[0].account_id,username:'Bob',email:'bob@example.com'};
+ let ready=false,reads=0;
+ const ui=boot({me:guest,storedId:id,roomApi:{
+  async getRoom(){reads++;return {...baseRoom,members:[{...members[0],is_ready:ready},members[1]]};},
+  async setReady(room,value){assert.equal(room,id);ready=value;return {account_id:guest.id,is_ready:value};}
+ }});
+ await flush();await flush();
+ let html=ui.root.innerHTML,fullRedraws=0;
+ Object.defineProperty(ui.root,'innerHTML',{
+  configurable:true,get:()=>html,set:value=>{fullRedraws++;html=value;}
+ });
+ const patches=[];
+ ui.root.querySelector=selector=>selector==='.real-room-area'
+  ? {set outerHTML(value){patches.push(value);}}
+  : null;
+ assert.equal(await ui.rooms.setReady(true),true);
+ assert.equal(await ui.rooms.setReady(false),true);
+ assert.equal(reads,3,'initial + two authoritative post-mutation GETs');
+ assert.equal(fullRedraws,0,'mutation must not redraw account page');
+ assert.ok(patches.length>=2,'Room-local updates are permitted');
+ for(const patch of patches){
+  assert.doesNotMatch(patch,/正在更新准备状态|正在同步服务器房间信息/);
+ }
+ assert.match(patches.at(-1),/○ 未准备/);
+});
+test('Kick and Leave confirmation do not rebuild the full account page',async()=>{
+ const ui=boot({storedId:id,roomApi:{
+  async getRoom(){return {...baseRoom,members};},
+  async kickMember(){return null;}
+ }});
+ await flush();await flush();
+ let html=ui.root.innerHTML,fullRedraws=0,modalOpened=0,modalClosed=0;
+ Object.defineProperty(ui.root,'innerHTML',{
+  configurable:true,get:()=>html,set:value=>{fullRedraws++;html=value;}
+ });
+ const patches=[];
+ ui.root.querySelector=selector=>{
+  if(selector==='.app-shell')return {insertAdjacentHTML(position,value){
+   assert.equal(position,'beforeend');
+   assert.match(value,/realRoomApprove/);
+   modalOpened++;
+  }};
+  if(selector==='[data-real-room-dialog]')return {remove(){modalClosed++;}};
+  if(selector==='.real-room-area')return {set outerHTML(value){patches.push(value);}};
+  return null;
+ };
+ clickReal(ui,'realRoomKick:'+members[0].account_id);
+ assert.equal(modalOpened,1);
+ assert.equal(fullRedraws,0,'opening confirmation should not replace shell');
+ clickReal(ui,'realRoomCancel');
+ assert.equal(modalClosed,1);
+ assert.equal(fullRedraws,0,'cancel should not redraw');
+ clickReal(ui,'realRoomKick:'+members[0].account_id);
+ clickReal(ui,'realRoomApprove');
+ await flush();
+ assert.equal(modalClosed,2);
+ assert.equal(fullRedraws,0,'confirmed Kick and follow-up GET remain Room-local');
+ assert.ok(patches.length>0);
+});
+
+test('confirmed Leave switches to Room entry with one local patch and no page rebuild',async()=>{
+ const guest={id:members[0].account_id,username:'Bob',email:'bob@example.com'};
+ let leaves=0;
+ const ui=boot({me:guest,storedId:id,roomApi:{
+  async getRoom(){return {...baseRoom,members};},
+  async leaveRoom(){leaves++;return null;}
+ }});
+ await flush();await flush();
+ let html=ui.root.innerHTML,fullRedraws=0,closed=0;
+ Object.defineProperty(ui.root,'innerHTML',{
+  configurable:true,get:()=>html,set:value=>{fullRedraws++;html=value;}
+ });
+ const patches=[];
+ ui.root.querySelector=selector=>{
+  if(selector==='.app-shell')return {insertAdjacentHTML(){}};
+  if(selector==='[data-real-room-dialog]')return {remove(){closed++;}};
+  if(selector==='.real-room-area')return {set outerHTML(value){patches.push(value);}};
+  return null;
+ };
+ clickReal(ui,'realRoomLeave');
+ clickReal(ui,'realRoomApprove');
+ await flush();
+ assert.equal(leaves,1);
+ assert.equal(closed,1);
+ assert.equal(fullRedraws,0,'Leave success must not reconstruct account shell');
+ assert.equal(ui.rooms.state.roomId,null);
+ assert.equal(ui.store.getItem('cabo.lastRealRoomId'),null);
+ assert.match(patches.at(-1),/创建房间/);
+ assert.doesNotMatch(patches.at(-1),/正在离开房间/);
 });
