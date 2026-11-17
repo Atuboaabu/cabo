@@ -12,17 +12,97 @@ const trace=(event,roomId,extra={})=>{
 };
 
 
-export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthorized=()=>{},getAccountId=()=>null,createSocket=null}={}) {
+export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthorized=()=>{},getAccountId=()=>null,createSocket=null,setTimeoutFn=globalThis.setTimeout,clearTimeoutFn=globalThis.clearTimeout,random=Math.random}={}) {
   const state={
     roomId:null,view:null,pending:null,error:'',outcomeUnknown:false,
     joinCode:'',stale:false,quietRead:false
   };
   let generation=0,queuedRoomChange=false,queuedCloseVerification=false,queuedReturnVerification=false,notificationsPaused=false;
+  // Single recovery owner and at most one timeout for the current generation.
+  let recovery=null;
+  function isRecoveryActive(r){
+    return r===recovery&&r.generation===generation&&
+      r.roomId.toLowerCase()===state.roomId?.toLowerCase()&&
+      !!state.view&&!notificationsPaused;
+  }
+  function clearRecoveryTimer(r){
+    if(r?.timer!=null){clearTimeoutFn(r.timer);r.timer=null;}
+  }
+  function cancelRecovery(){
+    clearRecoveryTimer(recovery);
+    recovery=null;
+  }
+  function scheduleRecovery(r){
+    if(!isRecoveryActive(r)||r.timer!=null||r.due)return;
+    const base=Math.min(30000,1000*2**Math.min(r.attempts,5));
+    const jitter=0.85+Math.max(0,Math.min(1,random()))*0.15;
+    const delay=Math.min(30000,Math.round(base*jitter));
+    r.attempts++;
+    trace('reconnect-scheduled',r.roomId,{delay_ms:delay,attempt:r.attempts});
+    r.timer=setTimeoutFn(()=>{
+      r.timer=null;
+      if(!isRecoveryActive(r))return;
+      if(r.phase==='opening'){
+        socket?.close(); // Timed-out CONNECTING handshake, not a server kick.
+        r.phase='validate';
+      }
+      r.due=true;
+      drainRecovery();
+    },delay);
+  }
+  function drainRecovery(){
+    const r=recovery;
+    if(!r||!r.due||!isRecoveryActive(r)||state.pending||queuedRoomChange)return;
+    r.due=false;
+    if(r.phase==='validate'||r.phase==='postopen'){
+      void readRoom(r.roomId,{silent:true,fromRecovery:true});
+    }else if(r.phase==='connect'){
+      r.phase='opening';
+      try{
+        if(socket?.reconnect(r.roomId)!==true)throw Error('socket unavailable');
+        // OPEN, not constructor completion, confirms a successful connection.
+        if(r.phase==='opening')scheduleRecovery(r);
+      }catch{
+        if(!isRecoveryActive(r))return;
+        r.phase='validate';
+        trace('reconnect-connect-failed',r.roomId);
+        scheduleRecovery(r);
+      }
+    }
+  }
+  function confirmedRecoveryRead(id){
+    const r=recovery;
+    if(!r||!isRecoveryActive(r)||r.roomId.toLowerCase()!==id.toLowerCase())return;
+    if(r.phase==='postopen'){
+      trace('reconnect-synced',id);
+      cancelRecovery();
+    }else if(r.phase==='validate'){
+      r.phase='connect';
+      scheduleRecovery(r);
+    }
+  }
+  function failedRecoveryRead(error){
+    const r=recovery;
+    if(!r)return;
+    if([401,403,404].includes(error?.status)){cancelRecovery();return;}
+    if(isRecoveryActive(r)&&(r.phase==='validate'||r.phase==='postopen'))
+      scheduleRecovery(r);
+  }
   const socket=createSocket?.({
     onChanged:roomId=>{
       if(roomId.toLowerCase()!==state.roomId?.toLowerCase()||!state.view||
          notificationsPaused)return;
       queuedRoomChange=true;
+      flushRoomChange();
+    },
+    onOpen:roomId=>{
+      const r=recovery;
+      if(!r||!isRecoveryActive(r)||r.phase!=='opening'||
+        r.roomId.toLowerCase()!==roomId.toLowerCase())return;
+      clearRecoveryTimer(r);
+      r.phase='postopen';
+      queuedRoomChange=true; // Always GET after reconnect OPEN.
+      trace('reconnect-open',roomId);
       flushRoomChange();
     },
     onClosed:roomId=>{
@@ -34,6 +114,14 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
         eligible,paused:notificationsPaused,pending:state.pending||'none'
       });
       if(!eligible)return;
+      if(!recovery||!isRecoveryActive(recovery)){
+        cancelRecovery();
+        recovery={roomId,generation,attempts:0,timer:null,due:false,phase:'validate'};
+      }else{
+        clearRecoveryTimer(recovery);
+        recovery.due=false;
+        recovery.phase='validate';
+      }
       queuedRoomChange=true;
       queuedCloseVerification=true;
       flushRoomChange();
@@ -47,7 +135,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
     }
   }
   function pauseNotifications(){
-    notificationsPaused=true;queuedRoomChange=false;queuedCloseVerification=false;queuedReturnVerification=false;socket?.close();
+    notificationsPaused=true;queuedRoomChange=false;queuedCloseVerification=false;queuedReturnVerification=false;cancelRecovery();socket?.close();
   }
   function resumeNotifications(){
     notificationsPaused=false;
@@ -63,13 +151,17 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
     return true;
   }
   function flushRoomChange(){
-    if(!queuedRoomChange||state.pending||!state.roomId||!state.view||notificationsPaused)return;
-    queuedRoomChange=false;
-    const fromClose=queuedCloseVerification;
-    queuedCloseVerification=false;
-    queuedReturnVerification=false;
-    if(fromClose)trace('close-recheck-queued',state.roomId);
-    void readRoom(state.roomId,{silent:true,fromClose});
+    if(state.pending||!state.roomId||!state.view||notificationsPaused)return;
+    if(queuedRoomChange){
+      queuedRoomChange=false;
+      const fromClose=queuedCloseVerification;
+      queuedCloseVerification=false;
+      queuedReturnVerification=false;
+      if(fromClose)trace('close-recheck-queued',state.roomId);
+      void readRoom(state.roomId,{silent:true,fromClose});
+      return;
+    }
+    drainRecovery();
   }
   const save=id=>{
     try { if(id)storage?.setItem(KEY,id);else storage?.removeItem(KEY); }
@@ -86,7 +178,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
   function reset({silent=false}={}){
     generation++; // Invalidate any outstanding create/join/GET response.
     queuedRoomChange=false;queuedCloseVerification=false;queuedReturnVerification=false;
-    socket?.close();
+    cancelRecovery();socket?.close();
     save(null);
     state.roomId=null;state.view=null;state.pending=null;state.error='';
     state.outcomeUnknown=false;state.joinCode='';state.stale=false;state.quietRead=false;
@@ -105,7 +197,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
     }
     if((error?.status===403 || error?.status===404) && kind!=='mutation'){
       // An authoritative GET may revoke the current Room locator.
-      queuedRoomChange=false;queuedCloseVerification=false;socket?.close();
+      queuedRoomChange=false;queuedCloseVerification=false;queuedReturnVerification=false;cancelRecovery();socket?.close();
       trace('room-access-revoked',state.roomId,{status:error.status});
       save(null);state.roomId=null;state.view=null;state.stale=false;
     }else if(kind==='read'||kind==='mutation'){
@@ -113,7 +205,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
       // any more writes. A kick-target 404 does not invalidate the whole Room.
       state.stale=!!state.view;
       if(kind==='mutation' && error?.status===404)state.error+=' 请刷新房间查看最新成员。';
-      if(error?.status===401){state.view=null;socket?.close();}
+      if(error?.status===401){cancelRecovery();state.view=null;socket?.close();}
     }
     if(error?.status===401)Promise.resolve().then(onUnauthorized).catch(()=>{});
   }
@@ -139,6 +231,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
       state.outcomeUnknown=false;
       save(id);
       openRoomSocket(id);
+      confirmedRecoveryRead(id);
       return true;
     }catch(error){
       if(token===generation&&!queuedCloseVerification&&!queuedReturnVerification){
@@ -152,6 +245,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
         }
         // Transient notification GET failures are silent. Preserve the last
         // confirmed view and let the existing manual refresh surface errors.
+        failedRecoveryRead(error);
       }
       return false;
     }finally{
@@ -202,9 +296,9 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
   async function restore(){
     if(state.pending)return false;
     const id=stored();
-    if(!id){queuedRoomChange=false;queuedCloseVerification=false;socket?.close();state.roomId=null;state.view=null;state.error='';state.stale=false;emit();return false;}
+    if(!id){queuedRoomChange=false;queuedCloseVerification=false;queuedReturnVerification=false;cancelRecovery();socket?.close();state.roomId=null;state.view=null;state.error='';state.stale=false;emit();return false;}
     if(state.roomId?.toLowerCase()!==id.toLowerCase()){
-      queuedRoomChange=false;queuedCloseVerification=false;socket?.close();
+      queuedRoomChange=false;queuedCloseVerification=false;queuedReturnVerification=false;cancelRecovery();socket?.close();
     }
     state.roomId=id;state.view=null; // Never restore an unverified cached Room View.
     return readRoom(id);
