@@ -5,7 +5,7 @@
  */
 import {getAuthApiBaseUrl} from './auth-api.js';
 
-const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // Opt-in diagnostics: no Cookie, token, payload or exception objects.
 const trace=(event,roomId,detail={})=>{
   if(globalThis.CABO_DEBUG_ROOM_WS===true)
