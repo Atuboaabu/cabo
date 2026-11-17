@@ -41,7 +41,9 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
   const emit=options=>onChange(state,options);
   function openRoomSocket(id){
     if(notificationsPaused)return;
-    try{socket?.connect(id);}catch{/* HTTP Room View remains authoritative. */}
+    try{socket?.connect(id);}catch{
+      trace('socket-connect-failed',id); // Deliberately omit exception details.
+    }
   }
   function pauseNotifications(){
     notificationsPaused=true;queuedRoomChange=false;queuedCloseVerification=false;socket?.close();
