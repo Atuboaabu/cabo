@@ -208,7 +208,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
     const id=state.roomId, token=generation;
     state.pending=action;
     state.error='';
-    emit();
+    emit({silent:true});
     try{
       if(action==='ready')await api.setReady(id,payload.ready);
       else if(action==='leave')await api.leaveRoom(id);
@@ -220,7 +220,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
         reset();
         return true;
       }
-      state.pending='read';emit();
+      state.pending='read';emit({silent:true});
       try{
         const latest=await api.getRoom(id);
         if(token!==generation||queuedCloseVerification)return false;
@@ -246,7 +246,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
       if(token===generation)failure(error,'mutation');
       return false;
     }finally{
-      if(token===generation){state.pending=null;emit();flushRoomChange();}
+      if(token===generation){state.pending=null;emit({silent:true});flushRoomChange();}
     }
   }
   async function setReady(ready){
