@@ -135,7 +135,9 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
   });
   const emit=options=>onChange(state,options);
   function openRoomSocket(id){
-    if(notificationsPaused)return;
+    // During recovery only drainRecovery may create a socket, after GET 200
+    // and its bounded delay. Ordinary rendering/GET must not bypass backoff.
+    if(notificationsPaused||recovery)return;
     try{socket?.connect(id);}catch{
       trace('socket-connect-failed',id); // Deliberately omit exception details.
     }
