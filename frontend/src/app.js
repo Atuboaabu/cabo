@@ -128,7 +128,7 @@ function render(){
  if(screen==='auth'&&realAuthState==='authenticated')screen='real-account';
  if(screen==='real-account'&&realAuthState!=='authenticated')screen='auth';
  if(screen==='real-account'){
-  realRooms.resumeNotifications();
+  if(!realBusy)realRooms.resumeNotifications();
   root.innerHTML=realAccountPage();return;
  }
  if(!view.account&&screen!=='auth')screen='auth';
