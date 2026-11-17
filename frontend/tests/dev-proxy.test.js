@@ -64,6 +64,13 @@ test('development proxy preserves auth Cookie, Origin, status and separate Set-C
  t.after(()=>{child.kill();});
  const base='http://127.0.0.1:'+port;
  const origin='http://localhost:5173';
+ // The HTTP proxy is not a WebSocket upgrade proxy: the served page must
+ // configure direct WS to the actual FastAPI origin, not localhost:5173.
+ const index=await fetch(base+'/');
+ assert.equal(index.status,200);
+ const html=await index.text();
+ assert.match(html,/CABO_ROOM_WS_BASE_URL/);
+ assert.ok(html.includes('http://127.0.0.1:'+backendPort));
  const login=await fetch(base+'/auth/login',{
   method:'POST',
   headers:{Origin:origin,'Content-Type':'application/json'},
