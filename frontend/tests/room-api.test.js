@@ -121,3 +121,33 @@ test('startGame rejects wrong status and malformed GameStartResponse',async()=>{
  await assert.rejects(malformed.api.startGame(roomId),err=>
   err instanceof RoomApiError&&err.code==='INVALID_RESPONSE');
 });
+
+test('Start POST 404 without recognized business code refers to endpoint or Room, not member',async()=>{
+ for(const body of [undefined,{}, {detail:'Not Found'}, {code:'HTTP_ERROR'}]){
+  const {api}=inspect(404,body);
+  await assert.rejects(api.startGame(roomId),err=>
+   err instanceof RoomApiError&&err.status===404&&
+   /开始游戏接口不可用或房间不存在/.test(err.message)&&
+   !/目标成员|最新成员/.test(err.message));
+ }
+});
+test('structured Start business error retains its specific code semantics',async()=>{
+ for(const [status,code,fragment] of [
+  [404,'ROOM_NOT_EXIST','房间不存在'],
+  [409,'ROOM_STATE_NOT_LOBBY','房间不在等待状态'],
+  [403,'REQUESTER_WRONG','没有权限']
+ ]){
+  const {api}=inspect(status,{code,detail:'session_token=hidden'});
+  await assert.rejects(api.startGame(roomId),err=>
+   err instanceof RoomApiError&&err.status===status&&err.code===code&&
+   err.message.includes(fragment)&&!err.message.includes('session_token'));
+ }
+});
+test('Ready HTTP 404 fallback is operation-specific; Kick member 404 retains original semantics',async()=>{
+ const ready=inspect(404,{detail:'Not Found'}).api;
+ await assert.rejects(ready.setReady(roomId,true),err=>
+  err.status===404&&/准备状态接口不可用/.test(err.message)&&!/目标成员/.test(err.message));
+ const kick=inspect(404,{code:'TARGET_MEMBER_NOT_EXIST'}).api;
+ await assert.rejects(kick.kickMember(roomId,accountId),err=>
+  err.status===404&&err.code==='TARGET_MEMBER_NOT_EXIST'&&/目标成员不存在/.test(err.message));
+});
