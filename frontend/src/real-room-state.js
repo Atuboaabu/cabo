@@ -23,7 +23,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
   function isRecoveryActive(r){
     return r===recovery&&r.generation===generation&&
       r.roomId.toLowerCase()===state.roomId?.toLowerCase()&&
-      !!state.view&&!notificationsPaused;
+      state.view?.state==='Lobby'&&!notificationsPaused;
   }
   function clearRecoveryTimer(r){
     if(r?.timer!=null){clearTimeoutFn(r.timer);r.timer=null;}
@@ -96,7 +96,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
   }
   const socket=createSocket?.({
     onChanged:roomId=>{
-      if(roomId.toLowerCase()!==state.roomId?.toLowerCase()||!state.view||
+      if(roomId.toLowerCase()!==state.roomId?.toLowerCase()||state.view?.state!=='Lobby'||
          notificationsPaused)return;
       queuedRoomChange=true;
       flushRoomChange();
@@ -115,7 +115,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
       // WebSocket close (including 1008) is a signal to *verify*, not proof
       // of a kick. Only an authoritative GET may revoke Room navigation.
       const eligible=roomId.toLowerCase()===state.roomId?.toLowerCase()&&
-        !!state.view&&!notificationsPaused;
+        state.view?.state==='Lobby'&&!notificationsPaused;
       trace('close-callback',roomId,{
         eligible,paused:notificationsPaused,pending:state.pending||'none'
       });
@@ -134,10 +134,20 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
     }
   });
   const emit=options=>onChange(state,options);
+  function reconcileRoomSocket(room){
+    if(room.state!=='Lobby'){
+      // Playing is an authorized Room, not a revoked Room. Its Lobby socket
+      // is no longer valid; do not let any recovery timer reopen it.
+      queuedRoomChange=false;queuedCloseVerification=false;
+      cancelRecovery();socket?.close();
+      return;
+    }
+    openRoomSocket(room.id);
+  }
   function openRoomSocket(id){
     // During recovery only drainRecovery may create a socket, after GET 200
     // and its bounded delay. Ordinary rendering/GET must not bypass backoff.
-    if(notificationsPaused||recovery)return;
+    if(notificationsPaused||recovery||state.view?.state!=='Lobby')return;
     try{socket?.connect(id);}catch{
       trace('socket-connect-failed',id); // Deliberately omit exception details.
     }
@@ -147,7 +157,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
   }
   function resumeNotifications(){
     notificationsPaused=false;
-    if(state.roomId&&state.view)openRoomSocket(state.roomId);
+    if(state.roomId&&state.view?.state==='Lobby')openRoomSocket(state.roomId);
   }
   function verifyOnReturn(){
     // A missed WebSocket close cannot be distinguished from a healthy socket.
@@ -241,7 +251,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
       state.roomId=id;state.view=room;state.error='';state.stale=false;
       state.outcomeUnknown=false;
       save(id);
-      openRoomSocket(id);
+      reconcileRoomSocket(room);
       confirmedRecoveryRead(id);
       return true;
     }catch(error){
@@ -285,7 +295,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
       if(token!==generation)return false;
       if(room.id.toLowerCase()!==roomId.toLowerCase())throw Error('服务端返回的房间 ID 不一致，请重新验证。');
       state.view=room;state.error='';state.stale=false;state.outcomeUnknown=false;
-      openRoomSocket(roomId);
+      reconcileRoomSocket(room);
       return true;
     }catch(error){
       // If Create/Join committed but returned no ID, there is no safe way
@@ -331,6 +341,9 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
     if(action==='disband')return me.is_host;
     if(action==='kick')return me.is_host&&targetAccountId!==me.account_id&&
       state.view.members.some(member=>member.account_id===targetAccountId&&!member.is_host);
+    if(action==='start')return me.is_host&&state.view.members.length>=2&&
+      state.view.members.length<=4&&state.view.members.filter(member=>!member.is_host)
+        .every(member=>member.is_ready);
     return false;
   }
   async function mutate(action,payload) {
@@ -352,6 +365,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
       else if(action==='leave')await api.leaveRoom(id);
       else if(action==='kick')await api.kickMember(id,target);
       else if(action==='disband')await api.disbandRoom(id);
+      else if(action==='start')await api.startGame(id);
       if(token!==generation)return false;
       if(action==='leave'||action==='disband'){
         // Only a confirmed 204 clears the Room locator; Session stays intact.
@@ -364,7 +378,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
         if(token!==generation||queuedCloseVerification||queuedReturnVerification)return false;
         if(latest.id.toLowerCase()!==id.toLowerCase())throw Error('服务端返回的房间 ID 不一致，请刷新房间。');
         state.view=latest;
-        openRoomSocket(id);
+        reconcileRoomSocket(latest);
         state.stale=false;
         state.outcomeUnknown=false;
         state.error='';
@@ -395,5 +409,6 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
   async function leaveRoom(){return mutate('leave');}
   async function kickMember(targetAccountId){return mutate('kick',{targetAccountId});}
   async function disbandRoom(){return mutate('disband');}
-  return {state,reset,setJoinCode,createRoom,joinRoom,restore,refresh,setReady,leaveRoom,kickMember,disbandRoom,allowedMutation,pauseNotifications,resumeNotifications,verifyOnReturn};
+  async function startGame(){return mutate('start');}
+  return {state,reset,setJoinCode,createRoom,joinRoom,restore,refresh,setReady,leaveRoom,kickMember,disbandRoom,startGame,allowedMutation,pauseNotifications,resumeNotifications,verifyOnReturn};
 }

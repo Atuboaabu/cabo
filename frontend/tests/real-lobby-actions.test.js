@@ -170,3 +170,76 @@ test('acknowledged Ready/Kick followed by 403/404 clears Room and never suggests
   }
  }
 });
+
+test('Host Start requires 2–4 Lobby members and every non-Host Ready',async()=>{
+ const api={startGame:async()=>{throw Error('unexpected Start request');}};
+ const hostReady={...lobby,members:[hostMember,{...guestMember,is_ready:true}]};
+ const valid=setup({api,identity:host,view:hostReady}).rooms;
+ assert.equal(valid.allowedMutation('start'),true);
+ assert.equal(setup({api,identity:guest,view:hostReady}).rooms.allowedMutation('start'),false);
+ assert.equal(setup({api,identity:host,view:lobby}).rooms.allowedMutation('start'),false);
+ assert.equal(setup({api,identity:host,view:{...lobby,members:[hostMember]}}).rooms.allowedMutation('start'),false);
+ const another={...guestMember,account_id:'123e4567-e89b-12d3-a456-426614174003',seat_index:1,is_ready:false};
+ assert.equal(setup({api,identity:host,view:{...lobby,members:[hostMember,{...guestMember,is_ready:true},another]}}).rooms.allowedMutation('start'),false);
+ const tooMany={...lobby,members:[hostMember,...[2,3,4,5].map((x)=>({...guestMember,account_id:'123e4567-e89b-12d3-a456-42661417400'+x,seat_index:x,is_ready:true}))]};
+ assert.equal(setup({api,identity:host,view:tooMany}).rooms.allowedMutation('start'),false);
+ assert.equal(setup({api,identity:host,view:{...hostReady,state:'Playing'}}).rooms.allowedMutation('start'),false);
+});
+test('Start 201 waits for authoritative GET Playing, prevents duplicate writes, preserves Room locator',async()=>{
+ const readyView={...lobby,members:[hostMember,{...guestMember,is_ready:true}]};
+ let writes=0,finish;
+ const storage=store();
+ const {rooms}=setup({identity:host,view:readyView,storage,api:{
+  async startGame(room){writes++;assert.equal(room,id);return {id:'123e4567-e89b-12d3-a456-426614174006',room_id:id,state:'InitialReveal',started_at:'2026-11-17T09:00:00Z'};},
+  async getRoom(room){assert.equal(room,id);return new Promise(resolve=>finish=()=>resolve({...readyView,state:'Playing'}));}
+ }});
+ const pending=rooms.startGame();
+ await Promise.resolve();await Promise.resolve();
+ assert.equal(writes,1);
+ assert.equal(rooms.state.view.state,'Lobby','no optimistic Playing before GET');
+ assert.equal(rooms.state.pending,'read');
+ assert.equal(await rooms.startGame(),false,'cannot send duplicate Start');
+ assert.equal(writes,1);
+ finish();
+ assert.equal(await pending,true);
+ assert.equal(rooms.state.view.state,'Playing');
+ assert.equal(rooms.state.roomId,id);
+ assert.equal(storage.getItem('cabo.lastRealRoomId'),id);
+ assert.equal(rooms.allowedMutation('start'),false);
+ assert.equal(await rooms.startGame(),false);
+});
+test('Start unknown result retains Lobby locator and blocks unsafe repeated request',async()=>{
+ let writes=0;
+ const view={...lobby,members:[hostMember,{...guestMember,is_ready:true}]};
+ const {rooms,storage}=setup({identity:host,view,api:{
+  async startGame(){writes++;throw fail(0,true);}
+ }});
+ assert.equal(await rooms.startGame(),false);
+ assert.equal(writes,1);
+ assert.equal(rooms.state.roomId,id);
+ assert.equal(storage.getItem('cabo.lastRealRoomId'),id);
+ assert.equal(rooms.state.outcomeUnknown,true);
+ assert.equal(await rooms.startGame(),false);
+ assert.equal(writes,1);
+});
+
+test('Start HTTP 409 does not invent Playing or retry the write; refresh remains authoritative',async()=>{
+ let writes=0,reads=0;
+ const ready={...lobby,members:[hostMember,{...guestMember,is_ready:true}]};
+ const {rooms,storage}=setup({identity:host,view:ready,api:{
+  async startGame(){writes++;throw fail(409);},
+  async getRoom(){reads++;return {...ready,state:'Playing'};}
+ }});
+ assert.equal(await rooms.startGame(),false);
+ assert.equal(writes,1);
+ assert.equal(rooms.state.view.state,'Lobby');
+ assert.equal(rooms.state.stale,true);
+ assert.equal(rooms.allowedMutation('start'),false);
+ assert.equal(await rooms.startGame(),false);
+ assert.equal(writes,1);
+ assert.equal(await rooms.refresh(),true);
+ assert.equal(reads,1);
+ assert.equal(rooms.state.view.state,'Playing');
+ assert.equal(rooms.state.roomId,id);
+ assert.equal(storage.getItem('cabo.lastRealRoomId'),id);
+});

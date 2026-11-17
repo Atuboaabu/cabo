@@ -101,3 +101,23 @@ test('path IDs reject malformed values before making a request',async()=>{
  assert.throws(()=>api.kickMember(roomId,'not-a-uuid'),err=>err.code==='INVALID_ID');
  assert.equal(called,0);
 });
+
+test('startGame POST /rooms/{id}/start expects 201 GameStartResponse without body',async()=>{
+ const started={id:'123e4567-e89b-12d3-a456-426614174006',room_id:roomId,state:'InitialReveal',started_at:'2026-11-17T09:00:00Z'};
+ const {api,call}=inspect(201,started);
+ assert.deepEqual(await api.startGame(roomId),started);
+ assert.equal(call().url,'http://localhost:8000/rooms/'+roomId+'/start');
+ assert.equal(call().init.method,'POST');
+ assert.equal(call().init.credentials,'include');
+ assert.equal(call().init.body,undefined);
+ assert.equal(call().init.headers['Content-Type'],undefined);
+});
+test('startGame rejects wrong status and malformed GameStartResponse',async()=>{
+ const started={id:'123e4567-e89b-12d3-a456-426614174006',room_id:roomId,state:'InitialReveal',started_at:'2026-11-17T09:00:00Z'};
+ const wrong=inspect(200,started);
+ await assert.rejects(wrong.api.startGame(roomId),err=>
+  err instanceof RoomApiError&&err.status===200);
+ const malformed=inspect(201,{...started,room_id:'not-a-uuid'});
+ await assert.rejects(malformed.api.startGame(roomId),err=>
+  err instanceof RoomApiError&&err.code==='INVALID_RESPONSE');
+});
