@@ -140,6 +140,9 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
     if(state.pending)return false;
     const id=stored();
     if(!id){queuedRoomChange=false;socket?.close();state.roomId=null;state.view=null;state.error='';state.stale=false;emit();return false;}
+    if(state.roomId?.toLowerCase()!==id.toLowerCase()){
+      queuedRoomChange=false;socket?.close();
+    }
     state.roomId=id;state.view=null; // Never restore an unverified cached Room View.
     return readRoom(id);
   }
