@@ -10,7 +10,7 @@ const ROOM_CODE=/^[A-HJ-NP-Z2-9]{6}$/;
 export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthorized=()=>{},getAccountId=()=>null,createSocket=null}={}) {
   const state={
     roomId:null,view:null,pending:null,error:'',outcomeUnknown:false,
-    joinCode:'',stale:false
+    joinCode:'',stale:false,quietRead:false
   };
   let generation=0,queuedRoomChange=false,queuedCloseVerification=false,notificationsPaused=false;
   const socket=createSocket?.({
@@ -67,7 +67,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
     socket?.close();
     save(null);
     state.roomId=null;state.view=null;state.pending=null;state.error='';
-    state.outcomeUnknown=false;state.joinCode='';state.stale=false;
+    state.outcomeUnknown=false;state.joinCode='';state.stale=false;state.quietRead=false;
     emit();
   }
   function setJoinCode(value){
@@ -101,7 +101,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
     // current Room visible and do not emit intermediate loading/stale states.
     const background=silent&&!!state.view;
     let changed=false;
-    state.pending='read';
+    state.pending='read';state.quietRead=false;
     if(!background){state.error='';state.stale=!!state.view;emit();}
     try{
       const room=await api.getRoom(id);
@@ -207,6 +207,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
     if(!allowedMutation(action,target))return false;
     const id=state.roomId, token=generation;
     state.pending=action;
+    state.quietRead=false;
     state.error='';
     emit({silent:true});
     try{
@@ -220,7 +221,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
         reset();
         return true;
       }
-      state.pending='read';emit({silent:true});
+      state.pending='read';state.quietRead=true;emit({silent:true});
       try{
         const latest=await api.getRoom(id);
         if(token!==generation||queuedCloseVerification)return false;
@@ -246,7 +247,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
       if(token===generation)failure(error,'mutation');
       return false;
     }finally{
-      if(token===generation){state.pending=null;emit({silent:true});flushRoomChange();}
+      if(token===generation){state.pending=null;state.quietRead=false;emit({silent:true});flushRoomChange();}
     }
   }
   async function setReady(ready){
