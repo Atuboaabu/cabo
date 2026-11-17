@@ -12,6 +12,16 @@ class RoomConnection:
 class RoomConnectionManager:
     def __init__(self) -> None:
         self.connections: dict[UUID, dict[WebSocket, RoomConnection]] = {}
+        self.room_locks: dict[UUID, asyncio.Lock] = {}
+    
+    def get_room_lock(
+        self,
+        room_id: UUID
+    )->asyncio.Lock:
+        return self.room_locks.setdefault(
+            room_id,
+            asyncio.Lock(),
+        )
 
     def connect(
         self,
@@ -64,14 +74,16 @@ class RoomConnectionManager:
         if not connection_dict:
             return
         
-        targets = [
-            ws
-            for ws, connection in connection_dict.items()
-            if connection.account_id == account_id
-        ]
+        lock = self.get_room_lock(room_id)
+        async with lock:
+            targets = [
+                ws
+                for ws, connection in connection_dict.items()
+                if connection.account_id == account_id
+            ]
 
-        for ws in targets:
-            self.disconnect(room_id, ws)
+            for ws in targets:
+                self.disconnect(room_id, ws)
 
         await asyncio.gather(
             *(
@@ -85,9 +97,10 @@ class RoomConnectionManager:
         self,
         room_id: UUID
     )->None:
-        connection_dict = self.connections.pop(room_id, {})
-
-        targets = list(connection_dict.keys())
+        lock = self.get_room_lock(room_id)
+        async with lock:
+            connection_dict = self.connections.pop(room_id, {})
+            targets = list(connection_dict.keys())
 
         await asyncio.gather(
             *(
@@ -106,26 +119,28 @@ class RoomConnectionManager:
         if connection_dict is None:
             return
         
-        targets = list(
-            ws
-            for ws, connection in connection_dict.items()
-            if connection.authorized
-        )
-        
-        results = await asyncio.gather(
-            *(
-                ws.send_json(message)
-                for ws in targets
-            ),
-            return_exceptions=True
-        )
+        lock = self.get_room_lock(room_id)
+        async with lock:
+            targets = list(
+                ws
+                for ws, connection in connection_dict.items()
+                if connection.authorized
+            )
+            
+            results = await asyncio.gather(
+                *(
+                    ws.send_json(message)
+                    for ws in targets
+                ),
+                return_exceptions=True
+            )
 
-        for ws, result in zip(targets, results):
-            if isinstance(result, Exception):
-                self.disconnect(
-                    room_id,
-                    ws
-                )
+            for ws, result in zip(targets, results):
+                if isinstance(result, Exception):
+                    self.disconnect(
+                        room_id,
+                        ws
+                    )
 
 manager = RoomConnectionManager()
 
