@@ -151,13 +151,13 @@ The browser must already have a valid Auth Session, and FastAPI must trust the r
 
 After real FastAPI authentication, the account page now offers **创建房间** and a **six-character room code** Join form. The frontend normalizes the code to uppercase before `joinRoom(roomCode)`; it accepts only the backend's alphabet `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`. Successful Create (201) / Join (200) returns a server-issued Room ID, which is then passed to `getRoom(id)`. Only a successful authoritative GET displays Room members. A pending or failed GET never invents a host, seat or Ready flag.
 
-The real Room view displays the returned code, state, host account ID, member count, and all member usernames, **server-supplied** `seat_index`, `is_host` and `is_ready`, sorted by `seat_index`. The "你" marker compares `member.account_id` with the authenticated `realAccount.id`; it never substitutes `demo-me`. **刷新房间** performs an explicit GET: there is no automatic polling or WebSocket.
+The real Room view displays the returned code, state, host account ID, member count, and all member usernames, **server-supplied** `seat_index`, `is_host` and `is_ready`, sorted by `seat_index`. The "你" marker compares `member.account_id` with the authenticated `realAccount.id`; it never substitutes `demo-me`. **刷新房间** performs an explicit GET; Phase 6-7-C1 also enables WebSocket-triggered authoritative GETs. There is no automatic polling.
 
 **Room navigation recovery:** the only persisted value is `sessionStorage['cabo.lastRealRoomId']`, a non-authoritative UUID locator. After `GET /auth/me` returns 200, the frontend reads this UUID and re-checks access using `GET /rooms/{id}` before displaying members. When GET returns 403 or 404 it clears that UUID and returns to the Create/Join entrance. A network error or 5xx retains the UUID for manual refresh and does not imply the Room was deleted; a previously visible Room View is marked stale. Confirmed logout (204 or expired session 401) clears the locator and in-memory Room state. Pending responses are invalidated on reset, so a late GET or Create response cannot restore state after logout. SessionStorage may be disabled: in that case Create/Join still works within the current page but navigation will not survive a reload.
 
 For a Create/Join network failure (`RoomApiError.outcomeUnknown`) the UI **never retries a write automatically** or invents a Room ID. It disables repeated Create/Join and explicitly warns that the operation might have committed. It provides **重新验证登录状态**, but this is not a Room discovery endpoint: without a Room ID in the response and without a backend "my room" query, an indeterminate Create cannot be reliably located. When the server returned a Room ID but the subsequent GET failed, the UUID remains available and the user can retry the read-only GET. A Room GET 401 triggers a separate `/auth/me` revalidation instead of trusting the old Room display.
 
-**Phase 6-6-B originally included only read-only Room operations**; Phase 6-6-C (below) subsequently added Ready, Leave, Kick and Disband. Start Game, WebSocket and gameplay remain unimplemented. The original `MockGateway` and its demo interface have not been modified, and real accounts never enter Mock rooms.
+**Phase 6-6-B originally included only read-only Room operations**; Phase 6-6-C (below) subsequently added Ready, Leave, Kick and Disband. Start Game and gameplay remain unimplemented; notification-only WebSocket support was added in Phase 6-7-C1. The original `MockGateway` and its demo interface have not been modified, and real accounts never enter Mock rooms.
 
 ### Manual two-account acceptance
 
@@ -181,7 +181,7 @@ The authenticated Room UI now exposes **Ready / Unready** to a *non-Host member*
 
 While a write or follow-up GET is pending, all Lobby mutation controls are disabled; there is one operation at a time. A successful Ready/Kick write followed by GET failure is reported as **「操作可能已完成，但暂时无法确认最新房间状态，请刷新房间。」** and marks the old view stale, blocking further writes until an authoritative GET succeeds. Network failure/5xx during a write also retains the Room UUID and marks the result unknown; the UI never auto-retries. GET 403/404 revokes invalid navigation, 401 triggers a separate authentication recheck, and confirmed real logout invalidates late Room responses. Error feedback does not display cookies, token values or backend exception internals.
 
-No real Game Start, Ready-to-Start action, WebSocket, polling or gameplay is included. MockGateway, Auth API protocol, database and FastAPI are unchanged.
+No real Game Start, Ready-to-Start action, automatic polling or gameplay is included. Phase 6-7-C1 adds notification-only Room WebSockets. MockGateway, Auth API protocol, database and FastAPI are unchanged.
 
 ### Phase 6-6-C manual integration
 
@@ -190,29 +190,6 @@ With two independent authenticated browser sessions in the same Room, verify gue
 ## Phase 6-6-D · Real dual-account integration audit
 
 See [ROOM_INTEGRATION_ACCEPTANCE.md](./ROOM_INTEGRATION_ACCEPTANCE.md) for the **not-yet-executed live browser / FastAPI / PostgreSQL** acceptance ledger, prerequisites, non-sensitive evidence guidelines, recovery/negative scenarios and cleanup rules. Source-level tests do not prove that two independent browser sessions can complete the Room lifecycle against an actual database. The latest UI accurately reflects Phase 6-6-C Lobby controls; the post-Ready/Kick authoritative GET 403/404 case no longer offers a refresh after its Room locator has been revoked.
-
-## Phase 6-7-C1 · Real Room WebSocket change notifications
-
-After a real Account has received a successful, authoritative `GET /rooms/{room_id}` (following Create, Join, restore, or manual Refresh), the frontend opens one WebSocket to `/ws/rooms/{room_id}`. The backend authenticates the WebSocket handshake with the **browser-owned HttpOnly session cookie** and validates the browser's real `Origin`. The frontend never reads or forwards the session token itself.
-
-The socket carries **notifications, not Room state**. Only valid JSON `{"type":"room.changed","room_id":"<current room UUID>"}` triggers an additional `getRoom(roomId)`; that GET alone replaces the displayed authoritative Room View. Invalid JSON, other event types, and stale/other-room IDs are ignored. Notifications that arrive while a Room HTTP operation is pending are coalesced into at most one additional GET after the pending operation completes. There is **no automatic reconnect**, heartbeat or polling. The **刷新房间** button remains available for manual verification if a notification is missed or the socket closes.
-
-Only one socket per verified real Room is maintained. Confirmed Leave/Disband, revoked Room access (GET 403/404), real logout, account switching, a changed Room ID, page unload and switching to local Mock demonstration close the old socket. Late events and late HTTP results are ignored after Room reset or switching; MockGateway and gameplay remain independent.
-
-**Development origin:** `npm run dev` serves HTTP requests on `http://localhost:5173` through the existing Node HTTP proxy but does **not** implement a WebSocket Upgrade proxy. It injects `window.CABO_ROOM_WS_BASE_URL` from the configured `CABO_BACKEND_URL` (default `http://localhost:8000`) into the page, so browser WebSockets connect **directly to FastAPI** while HTTP Room API calls continue through the same-origin frontend proxy. Production without this development injection defaults WebSocket origin to the configured `window.CABO_API_BASE_URL`. The URL helper chooses `ws:` or `wss:` from page/API security context and never hardcodes a hostname. Backend `allowed_origins` must trust the actual browser origin (`http://localhost:5173` for development), and the browser must send the cookie to FastAPI's host. Keep the hostname consistent (`localhost` vs `127.0.0.1`), and use HTTPS/WSS in production.
-
-### Manual two-browser notification verification
-
-1. Start isolated FastAPI + PostgreSQL and `cd frontend && npm run dev`. Sign in as Alice and Bob in **separate browser profiles**; confirm cookies are HttpOnly without copying their values.
-2. Alice creates a Room. In her browser's Network → WS panel, verify one accepted `ws://localhost:8000/ws/rooms/{id}` handshake (or the configured origin). Bob enters the same code and joins.
-3. Without Alice pressing **刷新房间**, verify Bob's join causes a `room.changed` frame in Alice's socket and a **fresh GET** `/rooms/{id}`; Alice's member list updates from that HTTP response.
-4. Bob toggles Ready/Unready; verify Alice's view updates on notifications/GET. Kick Bob as Alice; Bob's next GET must reject access and clear navigation. Note: the backend may close a kicked user's socket before sending a further notification, so also verify Bob's manual Refresh fallback.
-5. Independently verify guest Leave and Host Disband/Leave close the affected sockets and that remaining members update after server notifications where delivered.
-6. Refresh a browser page with a stored Room ID: after `GET /auth/me` and a successful `GET /rooms/{id}`, a new socket should be established exactly once. A 403/404 must not reconnect it.
-7. Switch to **进入本地 Mock 演示**: the real socket must close and no Mock actions should trigger real Room GETs. Check manual Refresh remains usable on the real Room screen. Verify logout and account switching close sockets.
-8. Verify HTTPS deployment opens `wss:` with a trusted Origin and valid session cookies. No automatic reconnect is expected if the connection closes.
-
-These steps require a running browser + FastAPI and are **not proved** by mocked WebSocket/unit tests.
 
 ## Phase 6-7-C1 · Real Room WebSocket change notifications
 
