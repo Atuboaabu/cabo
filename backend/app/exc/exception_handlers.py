@@ -244,9 +244,22 @@ def register_exception_handlers(app: FastAPI)->None:
         exc: exceptions.GameMembersNotReadyException
     ):
         return JSONResponse(
-            status_code = status.HTTP_403_FORBIDDEN,
+            status_code = status.HTTP_409_CONFLICT,
             content = {
-                "code": "SOME_MEMBERS_NOT_READY",
+                "code": "GAME_MEMBERS_NOT_READY",
                 "detail": "Some members not ready, please check" 
+            }
+        )
+    
+    @app.exception_handler(exceptions.GamePlayerCountInvalidException)
+    async def game_player_count_invalid_handle(
+        request: Request,
+        exc: exceptions.GamePlayerCountInvalidException
+    ):
+        return JSONResponse(
+            status_code = status.HTTP_409_CONFLICT,
+            content = {
+                "code": "GAME_PLAYER_COUNT_INVALID",
+                "detail": "Game player count invalid, please check" 
             }
         )
