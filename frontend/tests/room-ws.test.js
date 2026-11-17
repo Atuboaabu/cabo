@@ -740,3 +740,26 @@ test('late close from replaced WebSocket cannot restart recovery after OPEN',asy
  assert.equal(sockets.length,2);
  assert.equal(clock.pending,0);
 });
+
+test('exponential verification backoff saturates at 30 seconds without socket churn',async()=>{
+ let reads=0;
+ const {rooms,sockets,clock}=setup({api:{getRoom:async()=>{
+  reads++;
+  if(reads===1)return view(a);
+  throw Object.assign(new Error('temporarily unavailable'),{status:503});
+ }}});
+ rooms.state.roomId=a;await rooms.refresh();
+ sockets[0].serverClose(1006);await tick();
+ for(let i=0;i<10;i++){
+  assert.equal(clock.pending,1,'at most one retry timer');
+  const next=[...clock.timers.values()][0];
+  const delay=next.at-clock.now;
+  assert.ok(delay>=1000&&delay<=30000);
+  await clock.advance(delay);
+  assert.equal(rooms.state.view.id,a,'network errors cannot invalidate verified Room View');
+  assert.equal(sockets.length,1,'must not connect without GET authorization');
+ }
+ assert.equal(clock.delays.at(-1),30000,'maximum retry delay is capped');
+ assert.equal(clock.pending,1,'only one timer after ten failures');
+ rooms.reset();assert.equal(clock.pending,0);
+});
