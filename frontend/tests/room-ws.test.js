@@ -371,3 +371,35 @@ test('server close during pending GET invalidates old response, then revalidates
  assert.equal(rooms.state.roomId,null);
  assert.equal(rooms.state.view,null);
 });
+
+test('opt-in WS diagnostics log lifecycle and GET status without sensitive headers',async()=>{
+ const logs=[],oldInfo=console.info,oldDebug=globalThis.CABO_DEBUG_ROOM_WS;
+ let reads=0;
+ try{
+  console.info=(...args)=>logs.push(args);
+  globalThis.CABO_DEBUG_ROOM_WS=true;
+  const {rooms,sockets}=setup({api:{getRoom:async()=>{
+   if(++reads===1)return view(a);
+   throw Object.assign(new Error('forbidden'),{status:403});
+  }}});
+  rooms.state.roomId=a;
+  await rooms.refresh();
+  sockets[0].onopen?.();
+  sockets[0].serverClose(1008);
+  await tick();
+  assert.equal(rooms.state.roomId,null);
+  const summary=JSON.stringify(logs);
+  assert.match(summary,/connecting/);
+  assert.match(summary,/open/);
+  assert.match(summary,/close-callback/);
+  assert.match(summary,/close-recheck-get/);
+  assert.match(summary,/close-recheck-result/);
+  assert.match(summary,/"status":403/);
+  assert.match(summary,/room-access-revoked/);
+  assert.doesNotMatch(summary,/Cookie|session_token|Authorization|password|request_body/i);
+ }finally{
+  console.info=oldInfo;
+  if(oldDebug===undefined)delete globalThis.CABO_DEBUG_ROOM_WS;
+  else globalThis.CABO_DEBUG_ROOM_WS=oldDebug;
+ }
+});
