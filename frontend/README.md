@@ -213,3 +213,16 @@ Only one socket per verified real Room is maintained. Confirmed Leave/Disband, r
 8. Verify HTTPS deployment opens `wss:` with a trusted Origin and valid session cookies. No automatic reconnect is expected if the connection closes.
 
 These steps require a running browser + FastAPI and are **not proved** by mocked WebSocket/unit tests.
+
+### WebSocket close / access revocation regression checklist
+
+In a test FastAPI/PostgreSQL environment, sign in Alice (Host) and Bob (member) in separate browser profiles, enter the same Room and inspect Bob's Network → WS and HTTP requests without copying Cookie values:
+
+1. Alice Kicks Bob: Bob's socket closes with code **1008**, Bob issues a fresh `GET /rooms/{id}`, the server rejects membership (403/404), and Bob automatically returns to the Create/Join entrance with a Room-access message. No manual refresh is needed.
+2. Host Disband and Host Leave in separate test Rooms: each other member receives a socket close, rechecks membership via GET, and leaves the now-inaccessible Room UI.
+3. Bob leaves normally: his own local `socket.close()` must not issue a second GET; Alice still receives notifications and refreshes normally.
+4. Force an unexpected network WS disconnect while the Room and HTTP API are still accessible: GET 200 retains the Room. The client does not automatically reconnect; manual **刷新房间** continues working.
+5. Switch Rooms or log out during close/GET activity: old connection events and any delayed GET result must not restore the old Room.
+6. Force a close during a pending Room GET: the pending response is ignored; the queued follow-up GET determines current access. Verify that neither stale members nor a spurious kick message appear.
+
+These are manual integration instructions, **not evidence of an executed two-account E2E test**.
