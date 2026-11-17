@@ -66,7 +66,7 @@ async def room_websocket(
     )
 
     try:
-        manager.connect(
+        await manager.connect(
             room_id,
             account_id,
             websocket
@@ -81,7 +81,7 @@ async def room_websocket(
             await websocket.close(code=1008)
             return
         
-        if not manager.authorize(room_id, websocket):
+        if not await manager.authorize(room_id, websocket):
             await websocket.close(code=1008)
             return
     
@@ -92,7 +92,7 @@ async def room_websocket(
             "Websocket disconnected: room_id=%s", room_id
         )
     finally:
-        manager.disconnect(
+        await manager.disconnect(
             room_id,
             websocket
         )

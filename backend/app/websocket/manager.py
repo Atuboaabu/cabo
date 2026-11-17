@@ -23,35 +23,40 @@ class RoomConnectionManager:
             asyncio.Lock(),
         )
 
-    def connect(
+    async def connect(
         self,
         room_id: UUID,
         account_id: UUID,
         websocket: WebSocket
     )->None:
-        collections = self.connections.setdefault(room_id, {})
-        collections[websocket] = RoomConnection(
-            account_id,
-            False
-        )
-    
-    def authorize(
+        lock = self.get_room_lock(room_id)
+        async with lock:
+            self.connections.setdefault(room_id, {})[websocket] = (
+                RoomConnection(
+                    account_id,
+                    False
+                )
+            )
+
+    async def authorize(
         self,
         room_id: UUID,
         websocket: WebSocket
     )->bool:
-        connection_dict = self.connections.get(room_id)
-        if connection_dict is None:
-            return False
+        lock = self.get_room_lock(room_id)
+        async with lock:
+            connection_dict = self.connections.get(room_id)
+            if connection_dict is None:
+                return False
 
-        connection = connection_dict.get(websocket)
-        if not connection:
-            return False
-        
-        connection.authorized = True
-        return True
+            connection = connection_dict.get(websocket)
+            if not connection:
+                return False
+            
+            connection.authorized = True
+            return True
 
-    def disconnect(
+    def _disconnect_unlocked(
         self,
         room_id: UUID,
         websocket: WebSocket
@@ -64,6 +69,18 @@ class RoomConnectionManager:
 
         if not connection_dict:
             self.connections.pop(room_id, None)
+    
+    async def disconnect(
+        self,
+        room_id: UUID,
+        websocket: WebSocket
+    )->None:
+        lock = self.get_room_lock(room_id)
+        async with lock:
+            self._disconnect_unlocked(
+                room_id,
+                websocket
+            )
     
     async def account_disconnect(
         self,
@@ -83,7 +100,7 @@ class RoomConnectionManager:
             ]
 
             for ws in targets:
-                self.disconnect(room_id, ws)
+                self._disconnect_unlocked(room_id, ws)
 
         await asyncio.gather(
             *(
@@ -137,7 +154,7 @@ class RoomConnectionManager:
 
             for ws, result in zip(targets, results):
                 if isinstance(result, Exception):
-                    self.disconnect(
+                    self._disconnect_unlocked(
                         room_id,
                         ws
                     )
