@@ -3,6 +3,7 @@ import { assertCompatible, formatRemaining } from './adapter.js';
 import { passwordsMatch, passwordConfirmationFeedback, resendSecondsRemaining, VERIFICATION_COOLDOWN_MS } from './registration.js';
 import { createAuthApi } from './auth-api.js';
 import { createRoomApi } from './room-api.js';
+import { createRoomSocket } from './room-ws.js';
 import { createRealRoomState } from './real-room-state.js';
 
 const root=document.querySelector('#app');
@@ -16,6 +17,7 @@ let roomStorage=null;
 try{roomStorage=window.sessionStorage;}catch{/* optional navigation storage */}
 const realRooms=createRealRoomState({
  api:createRoomApi(),storage:roomStorage,
+ createSocket:options=>createRoomSocket(options),
  getAccountId:()=>realAccount?.id,
  onChange:()=>{if(realAuthState==='authenticated'&&screen==='real-account')render();},
  onUnauthorized:()=>restoreRealSession({skipRoomRestore:true})
@@ -125,7 +127,10 @@ function render(){
  if(screen==='auth'&&realAuthState==='unavailable'){root.innerHTML=realAuthUnavailable();return;}
  if(screen==='auth'&&realAuthState==='authenticated')screen='real-account';
  if(screen==='real-account'&&realAuthState!=='authenticated')screen='auth';
- if(screen==='real-account'){root.innerHTML=realAccountPage();return;}
+ if(screen==='real-account'){
+  realRooms.resumeNotifications();
+  root.innerHTML=realAccountPage();return;
+ }
  if(!view.account&&screen!=='auth')screen='auth';
  if(screen==='game'&&!view.game)screen='lobby';
  root.innerHTML=screen==='auth'?authentication():screen==='game'?game():screen==='settings'?settings():dashboard();
@@ -138,7 +143,10 @@ async function send(command,payload={}){
   const result=await gateway.send(command,payload,'ui-'+(++request));
   notice=(result.status==='Accepted'?'✓ ':'✕ ')+result.message+(result.code?' · '+result.code:'');
   if(result.status==='Accepted'){
-   if(['enterDemo','login'].includes(command))screen='lobby';
+   if(['enterDemo','login'].includes(command)){
+    if(command==='enterDemo')realRooms.pauseNotifications();
+    screen='lobby';
+   }
    if(['start','reclaim','completeDemoGame'].includes(command))screen='game';
    if(['createRoom','joinRoom','leave','disband','clearClosed'].includes(command))screen='lobby';
    if(['logout','expireSession'].includes(command))screen='auth';
@@ -149,6 +157,7 @@ async function send(command,payload={}){
 }
 // HttpOnly Cookie remains browser-managed; only public Account fields live here.
 async function restoreRealSession({skipRoomRestore=false}={}){
+ realRooms.pauseNotifications();
  realAuthState='checking';render();
  try{
   const account=await createAuthApi().getMe();
@@ -196,6 +205,7 @@ async function submitRealLogin(form,data){
 }
 async function logoutRealSession(){
  if(realBusy||realAuthState!=='authenticated')return;
+ realRooms.pauseNotifications();
  realBusy=true;realAuthError='';render();
  try{
   await createAuthApi().logout();
@@ -394,6 +404,8 @@ setInterval(()=>{
  root.querySelectorAll('[data-deadline]').forEach(el=>{const d=Number(el.dataset.deadline)||null;el.textContent=(el.id==='timer'?'⏱ ':'')+formatRemaining(d);});
  updateVerificationCountdown();
 },500);
+window.addEventListener('pagehide',()=>realRooms.pauseNotifications());
+window.addEventListener('pageshow',e=>{if(e.persisted)restoreRealSession();});
 window.addEventListener('keydown',e=>{if(screen!=='real-account'&&e.altKey&&e.shiftKey&&e.key.toLowerCase()==='m'){e.preventDefault();confirm('模拟新设备接管','旧连接会停止接受受保护操作。','takeover');}});
 render();
 restoreRealSession();
