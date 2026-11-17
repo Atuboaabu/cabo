@@ -70,12 +70,12 @@ class RoomConnectionManager:
         room_id: UUID,
         account_id: UUID
     )->None:
-        connection_dict = self.connections.get(room_id)
-        if not connection_dict:
-            return
-        
         lock = self.get_room_lock(room_id)
         async with lock:
+            connection_dict = self.connections.get(room_id)
+            if not connection_dict:
+                return
+        
             targets = [
                 ws
                 for ws, connection in connection_dict.items()
@@ -115,12 +115,12 @@ class RoomConnectionManager:
         room_id,
         message: dict
     )->None:
-        connection_dict = self.connections.get(room_id)
-        if connection_dict is None:
-            return
-        
         lock = self.get_room_lock(room_id)
         async with lock:
+            connection_dict = self.connections.get(room_id)
+            if connection_dict is None:
+                return
+        
             targets = list(
                 ws
                 for ws, connection in connection_dict.items()
