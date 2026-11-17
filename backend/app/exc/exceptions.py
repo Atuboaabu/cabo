@@ -56,3 +56,9 @@ class InvalidRequestException(Exception):
 
 class TargetMemberNotExistException(Exception):
     pass
+
+class GameMembersNotReadyException(Exception):
+    pass
+
+class GamePlayerCountInvalidException(Exception):
+    pass

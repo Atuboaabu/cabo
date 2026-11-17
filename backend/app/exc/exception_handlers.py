@@ -226,7 +226,7 @@ def register_exception_handlers(app: FastAPI)->None:
         )
 
     @app.exception_handler(exceptions.TargetMemberNotExistException)
-    async def invalid_request_handle(
+    async def target_member_not_exist_handle(
         request: Request,
         exc: exceptions.TargetMemberNotExistException
     ):
@@ -235,5 +235,18 @@ def register_exception_handlers(app: FastAPI)->None:
             content = {
                 "code": "TARGET_MEMBER_NOT_EXIST",
                 "detail": "The target member not exist" 
+            }
+        )
+    
+    @app.exception_handler(exceptions.GameMembersNotReadyException)
+    async def game_members_not_ready_handle(
+        request: Request,
+        exc: exceptions.GameMembersNotReadyException
+    ):
+        return JSONResponse(
+            status_code = status.HTTP_403_FORBIDDEN,
+            content = {
+                "code": "SOME_MEMBERS_NOT_READY",
+                "detail": "Some members not ready, please check" 
             }
         )
