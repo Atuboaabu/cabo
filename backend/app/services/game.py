@@ -5,6 +5,9 @@ from datetime import datetime, timezone
 
 from app.models import UserAccount, Room, RoomMember, GameSession
 from app.exc import exceptions
+from app.schemas import GameStartResponse
+from app.database import engine
+from app.services import auth
 
 def validate_start_game(
     session: Session,
@@ -76,3 +79,26 @@ def start_game(
     except Exception:
         session.rollback()
         raise
+
+def execute_start_game(
+    token: str,
+    room_id: UUID
+)->GameStartResponse:
+    with Session(engine) as session:
+        user = auth.get_authenticated_account(
+            session,
+            token
+        )
+
+        game_session = start_game(
+            session,
+            user,
+            room_id
+        )
+
+        return GameStartResponse(
+            id=game_session.id,
+            room_id=game_session.room_id,
+            state=game_session.state,
+            started_at=game_session.started_at
+        )
