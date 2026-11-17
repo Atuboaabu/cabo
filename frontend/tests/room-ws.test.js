@@ -17,10 +17,10 @@ class FakeWebSocket{
  close(){this.closed=true;}
  sendMessage(data){this.onmessage?.({data:JSON.stringify(data)});}
 }
-const setup=({api,storage=store()}={})=>{
+const setup=({api,storage=store(),onChange=()=>{}}={})=>{
  FakeWebSocket.sockets=[];
  const rooms=createRealRoomState({
-  api,storage,getAccountId:()=>member,
+  api,storage,onChange,getAccountId:()=>member,
   createSocket:opts=>createRoomSocket({...opts,WebSocketImpl:FakeWebSocket,baseUrl:'http://localhost:8000'})
  });
  return {rooms,storage,sockets:FakeWebSocket.sockets};
@@ -216,4 +216,64 @@ test('restoring another Room closes the old socket before the new GET finishes',
  assert.equal(await restoring,true);
  assert.equal(sockets.length,2);
  assert.equal(rooms.state.roomId,b);
+});
+
+test('notification GET is silent until an authoritative changed Room View arrives',async()=>{
+ let finish,requests=0;
+ const emitted=[];
+ const next={...view(a),members:[{...view(a).members[0],username:'Alice Updated'}]};
+ const {rooms,sockets}=setup({onChange:(state,options)=>emitted.push({
+  pending:state.pending,stale:state.stale,error:state.error,
+  username:state.view?.members[0].username,silent:options?.silent===true
+ }),api:{getRoom:async()=>{
+  requests++;
+  if(requests===2)return new Promise(resolve=>finish=resolve);
+  return view(a);
+ }}});
+ rooms.state.roomId=a;
+ await rooms.refresh();
+ emitted.length=0;
+ sockets[0].sendMessage({type:'room.changed',room_id:a});
+ assert.equal(rooms.state.pending,'read');
+ assert.equal(rooms.state.stale,false);
+ assert.equal(rooms.state.error,'');
+ assert.equal(emitted.length,0,'no loading event while WebSocket GET is pending');
+ finish(next);await tick();
+ assert.equal(emitted.length,1,'only one UI update for the completed GET');
+ assert.equal(emitted[0].silent,true);
+ assert.equal(emitted[0].pending,null);
+ assert.equal(emitted[0].username,'Alice Updated');
+});
+test('notification with identical Room View causes no UI rerender',async()=>{
+ let emissions=0;
+ const {rooms,sockets}=setup({
+  onChange:()=>emissions++,
+  api:{getRoom:async()=>view(a)}
+ });
+ rooms.state.roomId=a;await rooms.refresh();
+ emissions=0;
+ sockets[0].sendMessage({type:'room.changed',room_id:a});
+ await tick();
+ assert.equal(emissions,0);
+});
+test('transient notification GET failure keeps old Room and avoids error flash',async()=>{
+ let reads=0,emissions=0;
+ const {rooms,sockets}=setup({
+  onChange:()=>emissions++,
+  api:{getRoom:async()=>{
+   reads++;
+   if(reads>1)throw Object.assign(new Error('temporary outage'),{status:503});
+   return view(a);
+  }}
+ });
+ rooms.state.roomId=a;await rooms.refresh();
+ emissions=0;
+ sockets[0].sendMessage({type:'room.changed',room_id:a});
+ await tick();
+ assert.equal(emissions,0,'silent failure must not show a temporary error');
+ assert.equal(rooms.state.error,'');
+ assert.equal(rooms.state.stale,false);
+ assert.equal(rooms.state.view.members[0].username,'Alice');
+ assert.equal(await rooms.refresh(),false,'manual refresh still reports a real error');
+ assert.match(rooms.state.error,/temporary outage/);
 });

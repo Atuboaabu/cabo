@@ -19,7 +19,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
     queuedRoomChange=true;
     flushRoomChange();
   }});
-  const emit=()=>onChange(state);
+  const emit=options=>onChange(state,options);
   function openRoomSocket(id){
     if(notificationsPaused)return;
     try{socket?.connect(id);}catch{/* HTTP Room View remains authoritative. */}
@@ -34,7 +34,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
   function flushRoomChange(){
     if(!queuedRoomChange||state.pending||!state.roomId||!state.view||notificationsPaused)return;
     queuedRoomChange=false;
-    void readRoom(state.roomId);
+    void readRoom(state.roomId,{silent:true});
   }
   const save=id=>{
     try { if(id)storage?.setItem(KEY,id);else storage?.removeItem(KEY); }
@@ -81,23 +81,42 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
     }
     if(error?.status===401)Promise.resolve().then(onUnauthorized).catch(()=>{});
   }
-  async function readRoom(id) {
+  async function readRoom(id,{silent=false}={}) {
     if(state.pending || !UUID.test(id))return false;
     const token=generation;
-    state.pending='read';state.error='';state.stale=!!state.view;emit();
+    // A WebSocket notification is not a foreground operation. Keep the
+    // current Room visible and do not emit intermediate loading/stale states.
+    const background=silent&&!!state.view;
+    let changed=false;
+    state.pending='read';
+    if(!background){state.error='';state.stale=!!state.view;emit();}
     try{
       const room=await api.getRoom(id);
       if(token!==generation)return false;
       if(room.id.toLowerCase()!==id.toLowerCase())throw Error('服务端返回的房间 ID 不一致，请重新验证。');
+      changed=JSON.stringify(state.view)!==JSON.stringify(room)||!!state.error||state.stale;
       state.roomId=id;state.view=room;state.error='';state.stale=false;
       state.outcomeUnknown=false;
       save(id);
       openRoomSocket(id);
       return true;
     }catch(error){
-      if(token===generation)failure(error,'read');
+      if(token===generation){
+        if(!background || [401,403,404].includes(error?.status)){
+          failure(error,'read');
+          changed=true;
+        }
+        // Transient notification GET failures are silent. Preserve the last
+        // confirmed view and let the existing manual refresh surface errors.
+      }
       return false;
-    }finally{if(token===generation){state.pending=null;emit();flushRoomChange();}}
+    }finally{
+      if(token===generation){
+        state.pending=null;
+        if(!background || changed)emit(background?{silent:true}:undefined);
+        flushRoomChange();
+      }
+    }
   }
   async function enter(write) {
     if(state.pending||state.outcomeUnknown||state.roomId)return false;

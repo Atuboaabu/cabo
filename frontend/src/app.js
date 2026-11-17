@@ -19,7 +19,11 @@ const realRooms=createRealRoomState({
  api:createRoomApi(),storage:roomStorage,
  createSocket:options=>createRoomSocket(options),
  getAccountId:()=>realAccount?.id,
- onChange:()=>{if(realAuthState==='authenticated'&&screen==='real-account')render();},
+ onChange:(_,options)=>{
+  if(realAuthState!=='authenticated'||screen!=='real-account')return;
+  if(options?.silent&&renderSilentRoom())return;
+  render();
+ },
  onUnauthorized:()=>restoreRealSession({skipRoomRestore:true})
 });
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -54,6 +58,14 @@ function realRoomPanel(){
  +(room.outcomeUnknown?'<article class="paper-card"><h3>操作结果尚不能确认</h3><p>请求可能已在服务器完成，请勿直接重复创建或加入。</p><p>可以重新验证登录状态。但后端尚无“查询当前账号所在房间”接口；创建请求未返回 ID 时，前端无法自动找到房间。</p><button type="button" class="outline" data-action="realRoomRecheck">重新验证登录状态</button></article>'
  :'<div class="lobby-grid"><article class="paper-card"><div class="card-symbol">♤</div><h3>创建房间</h3><p>通过真实账号向服务器创建房间。</p><button type="button" class="primary full" data-action="realRoomCreate" '+(waiting?'disabled':'')+'>创建房间</button></article><article class="paper-card"><div class="card-symbol">♧</div><h3>加入房间</h3><form id="real-room-join-form"><label>六位房间码<input name="roomCode" maxlength="6" minlength="6" required autocomplete="off" spellcheck="false" autocapitalize="characters" placeholder="例如 ABC234" value="'+esc(room.joinCode)+'" '+(waiting?'disabled':'')+'></label><button type="submit" class="primary full" '+(waiting?'disabled':'')+'>加入房间</button></form></article></div>')
  +'</section>';
+}
+// WebSocket notifications update only the real Room area, leaving the
+// account header, dialogs, scroll position and other controls untouched.
+function renderSilentRoom(){
+ const section=root.querySelector('.real-room-area');
+ if(!section)return false;
+ section.outerHTML=realRoomPanel();
+ return true;
 }
 function realAccountPage(){
  return shell('<section class="dashboard real-account-page"><div class="intro"><span class="eyebrow">CABO ACCOUNT</span><h1>欢迎回来，'+esc(realAccount.username)+'</h1><p>已通过 FastAPI 登录。</p></div><article class="paper-card"><h2>账号信息</h2><div class="data-line"><span>昵称</span><strong>'+esc(realAccount.username)+'</strong></div><div class="data-line"><span>邮箱</span><strong>'+esc(realAccount.email)+'</strong></div><p class="hint">真实 Room 已支持创建、加入、准备、离开、踢出和解散；牌局与游戏功能尚未连接服务器。</p><p id="real-auth-feedback" class="hint form-feedback" '+(realAuthError?'data-tone="error" role="alert"':'role="status"')+' aria-live="polite">'+esc(realAuthError)+'</p><div class="button-row"><button type="button" class="primary" data-action="realLogout" '+(realBusy?'disabled':'')+'>退出登录</button>'+btn('进入本地 Mock 演示','enterDemo','outline',realBusy)+'</div><p class="hint">Mock 演示使用独立的本地演示身份，不会使用当前真实账号加入房间。</p></article>'+realRoomPanel()+'</section>','dashboard-main');

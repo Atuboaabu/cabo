@@ -21,6 +21,7 @@ function boot({roomApi,storedId=null,me=account}={}){
  const store=storage();
  if(storedId)store.setItem('cabo.lastRealRoomId',storedId);
  let sent=0;
+ let onRoomChanged=()=>{};
  const root={
   innerHTML:'',
   addEventListener(type,fn){events[type]=fn;},
@@ -36,7 +37,7 @@ function boot({roomApi,storedId=null,me=account}={}){
   resendSecondsRemaining:()=>0,VERIFICATION_COOLDOWN_MS:60000,
   createAuthApi:()=>({getMe:async()=>me,logout:async()=>null}),
   createRoomApi:()=>roomApi,
-  createRoomSocket:()=>({connect(){},close(){}}),
+  createRoomSocket:options=>{onRoomChanged=options.onChanged;return {connect(){},close(){}};},
   createRealRoomState,
   setInterval(){},
   FormData:class{
@@ -45,7 +46,7 @@ function boot({roomApi,storedId=null,me=account}={}){
   }
  };
  runInNewContext(appSource+'\n;globalThis.__testRoom=realRooms;',ctx);
- return {root,rooms:ctx.__testRoom,store,events,mockSends:()=>sent};
+ return {root,rooms:ctx.__testRoom,store,events,mockSends:()=>sent,notify:id=>onRoomChanged(id)};
 }
 async function flush(){await new Promise(resolve=>setImmediate(resolve));}
 
@@ -278,4 +279,36 @@ test('in-flight real Lobby mutation disables all conflicting controls',async()=>
  finish(null);
  await flush();
  assert.equal(ui.mockSends(),0);
+});
+
+test('WebSocket Room update patches only Room area, without full-screen flicker',async()=>{
+ let reads=0;
+ const ui=boot({storedId:id,roomApi:{
+  async getRoom(){
+   reads++;
+   return {...baseRoom,members:reads===1?members:[...members,{account_id:'123e4567-e89b-12d3-a456-426614174003',username:'Carol',seat_index:3,is_ready:false,is_host:false}]};
+  }
+ }});
+ await flush();
+ await flush(); // Allow initial /auth/me and stored Room restore to finish.
+ let fullRedraws=0;
+ let html=ui.root.innerHTML;
+ Object.defineProperty(ui.root,'innerHTML',{
+  configurable:true,get:()=>html,set:value=>{fullRedraws++;html=value;}
+ });
+ const patches=[];
+ ui.root.querySelector=selector=>selector==='.real-room-area'
+  ? {set outerHTML(value){patches.push(value);}}
+  : null;
+ ui.notify(id);
+ assert.equal(fullRedraws,0,'no intermediate full render on notification');
+ await flush();
+ assert.equal(reads,2);
+ assert.equal(fullRedraws,0,'account page and dialogs must remain intact');
+ assert.equal(patches.length,1);
+ assert.match(patches[0],/Carol/);
+ assert.doesNotMatch(patches[0],/正在同步服务器房间信息/);
+ ui.notify(id);
+ await flush();
+ assert.equal(patches.length,1,'identical Room View should not redraw');
 });
