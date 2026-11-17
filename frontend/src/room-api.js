@@ -41,7 +41,9 @@ function errorMessage(status, code, isWrite, kind) {
   if(status===403) return '没有权限执行此操作，或请求来源不被允许。';
   if(status===404) return BUSINESS_ERRORS[code]||(kind==='start'
     ? '开始游戏接口不可用或房间不存在，请检查服务地址和房间状态。'
-    : '房间或目标成员不存在。');
+    : kind==='ready'
+      ? '准备状态接口不可用或房间不存在，请刷新房间核实。'
+      : '房间或目标成员不存在。');
   if(status===409) return BUSINESS_ERRORS[code]||'房间状态冲突，请刷新房间信息。';
   if(status===422) return '请求参数无效，请检查房间码或操作数据。';
   if(status===429) return '请求过于频繁，请稍后再试。';
