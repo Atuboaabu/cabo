@@ -1,8 +1,9 @@
 from uuid import UUID
 from sqlalchemy.orm import Session
 from sqlalchemy import select
+from datetime import datetime, timezone
 
-from app.models import UserAccount, Room, RoomMember
+from app.models import UserAccount, Room, RoomMember, GameSession
 from app.exc import exceptions
 
 def validate_start_game(
@@ -48,3 +49,30 @@ def validate_start_game(
         raise exceptions.GameMembersNotReadyException()
     
     return (room, list(room_members))
+
+def start_game(
+    session: Session,
+    host_user: UserAccount,
+    room_id: UUID
+)->GameSession:
+    try:
+        room, members = validate_start_game(
+            session,
+            host_user,
+            room_id
+        )
+        room.state = "Playing"
+
+        now = datetime.now(timezone.utc)
+        game_session = GameSession(
+            room_id=room.id,
+            state="Starting",
+            started_at=now,
+            ended_at=None
+        )
+        session.add(game_session)
+        session.commit()
+        return game_session
+    except Exception:
+        session.rollback()
+        raise
