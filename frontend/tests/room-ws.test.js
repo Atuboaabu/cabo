@@ -160,3 +160,24 @@ test('logout reset closes socket and invalidates in-flight GET',async()=>{
  assert.equal(rooms.state.view,null);
  assert.equal(rooms.state.roomId,null);
 });
+
+test('create, join, and stored Room recovery connect only after authoritative GET',async()=>{
+ for(const mode of ['create','join','restore']){
+  let resolveRead;
+  const pending=new Promise(resolve=>resolveRead=resolve);
+  const storage=store();
+  if(mode==='restore')storage.setItem('cabo.lastRealRoomId',a);
+  const {rooms,sockets}=setup({storage,api:{
+   createRoom:async()=>({id:a,room_code:'ABC234',host_account_id:member,state:'Lobby'}),
+   joinRoom:async()=>({id:a,room_code:'ABC234',host_account_id:member,state:'Lobby'}),
+   getRoom:async()=>pending
+  }});
+  if(mode==='join')rooms.setJoinCode('ABC234');
+  const operation=mode==='create'?rooms.createRoom():mode==='join'?rooms.joinRoom():rooms.restore();
+  await tick();
+  assert.equal(sockets.length,0,'must not connect before verified Room GET');
+  resolveRead(view(a));
+  assert.equal(await operation,true);
+  assert.equal(sockets.length,1,mode+' should connect exactly once');
+ }
+});
