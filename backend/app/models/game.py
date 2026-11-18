@@ -19,6 +19,9 @@ class GameSession(Base):
             "room_id",
             unique=True,
             postgresql_where=text("state IN ('Starting', 'Playing')")
+        ),
+        CheckConstraint(
+            "phase IN ('InitialPeek', 'PlayerTurn')"
         )
     )
 
@@ -52,6 +55,11 @@ class GameSession(Base):
     ended_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=True
+    )
+
+    phase: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False
     )
 
 class GamePlayer(Base):
@@ -97,6 +105,12 @@ class GamePlayer(Base):
         DateTime(timezone=True),
         server_default=func.now(),
         nullable=False
+    )
+
+    initial_peek_completed: Mapped[bool] = mapped_column(
+        nullable=False,
+        default=False,
+        server_default=text("false")
     )
 
 class GameCard(Base):
