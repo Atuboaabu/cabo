@@ -107,7 +107,7 @@ class GameCard(Base):
             name="ck_game_cards_value_inrange"
         ),
         CheckConstraint(
-            "location IN ('DrawPile', 'DiscartPile', 'Hand')",
+            "location IN ('DrawPile', 'DiscardPile', 'Hand')",
             name="ck_game_cards_location_valid"
         ),
         CheckConstraint(
@@ -115,7 +115,11 @@ class GameCard(Base):
             name="ck_game_cards_position_nonnegative"
         ),
         CheckConstraint(
-            "(owner_game_player_id IS NOT NULL AND location = 'HAND') OR (owner_game_player_id IS NULL AND location <> 'HAND')",
+            """
+            (location = 'Hand' AND owner_game_player_id IS NOT NULL)
+            OR
+            (location <> 'Hand' AND owner_game_player_id IS NULL)
+            """,
             name="ck_game_cards_owner_game_player_id_valid"
         ),
     )
@@ -149,7 +153,7 @@ class GameCard(Base):
         nullable=False
     )
 
-    reated_at: Mapped[datetime] = mapped_column(
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
         nullable=False
