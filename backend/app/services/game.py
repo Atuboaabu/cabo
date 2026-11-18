@@ -72,7 +72,8 @@ def start_game(
             room_id=room.id,
             state="Playing",
             started_at=now,
-            ended_at=None
+            ended_at=None,
+            phase="InitialPeek"
         )
         session.add(game_session)
         session.flush()
