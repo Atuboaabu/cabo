@@ -48,12 +48,12 @@ class GameSession(Base):
         nullable=False
     )
 
-    started_at: Mapped[datetime] = mapped_column(
+    started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True
     )
 
-    ended_at: Mapped[datetime] = mapped_column(
+    ended_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True
     )
@@ -63,7 +63,7 @@ class GameSession(Base):
         nullable=False
     )
 
-    initial_peek_deadline_at: Mapped[datetime] = mapped_column(
+    initial_peek_deadline_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True
     )
@@ -86,7 +86,7 @@ class GamePlayer(Base):
             name="uq_game_players_game_session_id_seat_index"
         ),
         CheckConstraint(
-            "initial_peek_1st_card_id IS NOT NULL"
+            "initial_peek_1st_card_id IS NOT NULL "
             "OR initial_peek_2nd_card_id IS NULL",
             name="ck_game_players_peek_card_valid"
         ),
@@ -128,13 +128,21 @@ class GamePlayer(Base):
         server_default=text("false")
     )
 
-    initial_peek_1st_card_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("game_cards.id"),
+    initial_peek_1st_card_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey(
+            "game_cards.id",
+            name="fk_game_players_initial_peek_1st_card_id",
+            use_alter=True
+        ),
         nullable=True
     )
 
-    initial_peek_2nd_card_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("game_cards.id"),
+    initial_peek_2nd_card_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey(
+            "game_cards.id",
+            name="fk_game_players_initial_peek_2nd_card_id",
+            use_alter=True
+        ),
         nullable=True
     )
 
@@ -183,7 +191,7 @@ class GameCard(Base):
         nullable=False
     )
 
-    owner_game_player_id: Mapped[uuid.UUID] = mapped_column(
+    owner_game_player_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("game_players.id"),
         nullable=True
     )
