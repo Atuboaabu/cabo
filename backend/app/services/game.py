@@ -8,8 +8,7 @@ from app.exc import exceptions
 from app.schemas import GameStartResponse
 from app.database import engine
 from app.services import auth
-from app.game_logic.config import build_cabo_deck
-from app.game_logic.deck import shuffle_deck
+from app.game_logic import build_cabo_deck, shuffle_deck, deal_initial_cards, InitialDealResult
 
 def validate_start_game(
     session: Session,
@@ -80,6 +79,7 @@ def start_game(
 
         assert game_session.id is not None
 
+        game_players_by_seat: dict[int, GamePlayer] = {}
         for member in members:
             game_player = GamePlayer(
                 game_session_id=game_session.id,
@@ -87,9 +87,36 @@ def start_game(
                 seat_index=member.seat_index,
             )
             session.add(game_player)
+            game_players_by_seat[member.seat_index] = game_player
         
         shuffled_card_values = shuffle_deck(build_cabo_deck())
-        game_cards = (
+        initial_deal_result = deal_initial_cards(
+            shuffled_card_values,
+            list(game_players_by_seat.keys())
+        )
+
+        hand_cards = (
+            GameCard(
+                game_session_id=game_session.id,
+                value=card_value,
+                location="Hand",
+                owner_game_player_id=game_players_by_seat[seat_index].account_id,
+                position=seat_index
+            )
+            for seat_index, card_value in enumerate(initial_deal_result.hands_by_seat)
+        )
+        session.add_all(hand_cards)
+
+        first_discard_card = GameCard(
+            game_session_id=game_session.id,
+            value=initial_deal_result.first_discard,
+            location="DiscardPile",
+            owner_game_player_id=None,
+            position=0
+        )
+        session.add(first_discard_card)
+
+        draw_cards = (
             GameCard(
                 game_session_id=game_session.id,
                 value=card_value,
@@ -97,9 +124,9 @@ def start_game(
                 owner_game_player_id=None,
                 position=index
             )
-            for index, card_value in enumerate(shuffled_card_values)
+            for index, card_value in enumerate(initial_deal_result.remaining_draw_pile)
         )
-        session.add_all(game_cards)
+        session.add_all(draw_cards)
 
         session.commit()
         return game_session
