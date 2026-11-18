@@ -18,5 +18,7 @@ CABO_COUNTS: dict[int, int] = {
     13: 2,
 }
 
+INITIAL_PEEK_DURATION_SECONDS: int = 45
+
 def build_cabo_deck()->list[int]:
     return build_deck_values(CABO_COUNTS)

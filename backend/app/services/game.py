@@ -1,14 +1,15 @@
 from uuid import UUID
 from sqlalchemy.orm import Session
 from sqlalchemy import select
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from app.models import UserAccount, Room, RoomMember, GameSession, GamePlayer, GameCard
 from app.exc import exceptions
 from app.schemas import GameStartResponse
 from app.database import engine
 from app.services import auth
-from app.game_logic import build_cabo_deck, shuffle_deck, deal_initial_cards, InitialDealResult
+from app.game_logic import (build_cabo_deck, shuffle_deck, deal_initial_cards,
+                            InitialDealResult, INITIAL_PEEK_DURATION_SECONDS)
 
 def validate_start_game(
     session: Session,
@@ -73,7 +74,8 @@ def start_game(
             state="Playing",
             started_at=now,
             ended_at=None,
-            phase="InitialPeek"
+            phase="InitialPeek",
+            initial_peek_deadline_at=now + timedelta(seconds=INITIAL_PEEK_DURATION_SECONDS)
         )
         session.add(game_session)
         session.flush()
