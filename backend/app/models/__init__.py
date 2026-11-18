@@ -2,4 +2,4 @@ from .account import UserAccount
 from .auth import AuthSession, EmailVerificationCode
 from .rate_limit import LoginRateLimit
 from .room import Room, RoomMember
-from .game import GameSession, GamePlayer
+from .game import GameSession, GamePlayer, GameCard

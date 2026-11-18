@@ -98,3 +98,59 @@ class GamePlayer(Base):
         server_default=func.now(),
         nullable=False
     )
+
+class GameCard(Base):
+    __tablename__="game_cards"
+    __table_args__=(
+        CheckConstraint(
+            "value >=0 AND value <= 13",
+            name="ck_game_cards_value_inrange"
+        ),
+        CheckConstraint(
+            "location IN ('DrawPile', 'DiscartPile', 'Hand')",
+            name="ck_game_cards_location_valid"
+        ),
+        CheckConstraint(
+            "position >= 0",
+            name="ck_game_cards_position_nonnegative"
+        ),
+        CheckConstraint(
+            "(owner_game_player_id IS NOT NULL AND location = 'HAND') OR (owner_game_player_id IS NULL AND location <> 'HAND')",
+            name="ck_game_cards_owner_game_player_id_valid"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        default=uuid.uuid4,
+        primary_key=True
+    )
+
+    game_session_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("game_sessions.id"),
+        nullable=False
+    )
+
+    value: Mapped[int] = mapped_column(
+        nullable=False
+    )
+
+    location: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False
+    )
+
+    owner_game_player_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("game_players.id"),
+        nullable=True
+    )
+
+    position: Mapped[int] = mapped_column(
+        nullable=False
+    )
+
+    reated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False
+    )
