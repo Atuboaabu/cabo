@@ -63,6 +63,11 @@ class GameSession(Base):
         nullable=False
     )
 
+    initial_peek_deadline_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
+
 class GamePlayer(Base):
     __tablename__ = "game_players"
     __table_args__ = (
@@ -80,6 +85,15 @@ class GamePlayer(Base):
             "seat_index",
             name="uq_game_players_game_session_id_seat_index"
         ),
+        CheckConstraint(
+            "initial_peek_1st_card_id IS NOT NULL"
+            "OR initial_peek_2nd_card_id IS NULL",
+            name="ck_game_players_peek_card_valid"
+        ),
+        CheckConstraint(
+            "initial_peek_1st_card_id <> initial_peek_2nd_card_id",
+            name="ck_game_players_peek_distinct"
+        )
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -112,6 +126,16 @@ class GamePlayer(Base):
         nullable=False,
         default=False,
         server_default=text("false")
+    )
+
+    initial_peek_1st_card_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("game_cards.id"),
+        nullable=True
+    )
+
+    initial_peek_2nd_card_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("game_cards.id"),
+        nullable=True
     )
 
 class GameCard(Base):
