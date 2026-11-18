@@ -8,36 +8,47 @@ class InitialDealResult:
 
 def deal_initial_cards(
     shuffled_cards: list[int],
-    seat_indeces: list[int]
+    seat_indices: list[int]
 )->InitialDealResult:
-    if seat_indeces is None:
+    if seat_indices is None:
         raise ValueError(
-            "Wrong Parameter: seat_indeces"
+            "Wrong Parameter: seat_indices"
         )
 
-    player_count = len(seat_indeces)
+    player_count = len(seat_indices)
     if not 2 <= player_count <= 4:
         raise ValueError(
-            "Wrong Parameter: seat_indeces"
+            "Wrong Parameter: seat_indices"
+        )
+
+    if len(set(seat_indices)) != player_count:
+        raise ValueError(
+            "Wrong Parameter: duplicate seat_index in seat_indices"
         )
 
     if not all(
-        0 <= seat_index <= 3
-        for seat_index in seat_indeces
+        type(seat_index) is int and 0 <= seat_index <= 3
+        for seat_index in seat_indices
     ):
         raise ValueError(
-            "Wrong Parameter: seat_indeces"
+            "Wrong Parameter: seat_indices"
         )
 
-    sorted_seat_indeces = seat_indeces.copy()
-    sorted_seat_indeces.sort()
+    required_card_count = player_count * 4 + 1
+    if len(shuffled_cards) < required_card_count:
+        raise ValueError(
+            "Insufficient cards for initial deal"
+        )
+
+    sorted_seat_indices = seat_indices.copy()
+    sorted_seat_indices.sort()
     hands_by_seat = (
         {
             seat_index: [
-                shuffled_cards[seat_index + player_count * i]
+                shuffled_cards[deal_index + player_count * i]
                 for i in range(4)
             ]
-            for seat_index in sorted_seat_indeces
+            for deal_index, seat_index in enumerate(sorted_seat_indices)
         }
     )
 
