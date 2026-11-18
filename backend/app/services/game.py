@@ -3,11 +3,13 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 from datetime import datetime, timezone
 
-from app.models import UserAccount, Room, RoomMember, GameSession, GamePlayer
+from app.models import UserAccount, Room, RoomMember, GameSession, GamePlayer, GameCard
 from app.exc import exceptions
 from app.schemas import GameStartResponse
 from app.database import engine
 from app.services import auth
+from app.game_logic.config import build_cabo_deck
+from app.game_logic.deck import shuffle_deck
 
 def validate_start_game(
     session: Session,
@@ -85,6 +87,19 @@ def start_game(
                 seat_index=member.seat_index,
             )
             session.add(game_player)
+        
+        shuffled_card_values = shuffle_deck(build_cabo_deck())
+        game_cards = (
+            GameCard(
+                game_session_id=game_session.id,
+                value=card_value,
+                location="DrawPile",
+                owner_game_player_id=None,
+                position=index
+            )
+            for index, card_value in enumerate(shuffled_card_values)
+        )
+        session.add_all(game_cards)
 
         session.commit()
         return game_session
