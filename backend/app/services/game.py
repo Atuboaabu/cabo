@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 from datetime import datetime, timezone
 
-from app.models import UserAccount, Room, RoomMember, GameSession
+from app.models import UserAccount, Room, RoomMember, GameSession, GamePlayer
 from app.exc import exceptions
 from app.schemas import GameStartResponse
 from app.database import engine
@@ -74,6 +74,18 @@ def start_game(
             ended_at=None
         )
         session.add(game_session)
+        session.flush()
+
+        assert game_session.id is not None
+
+        for member in members:
+            game_player = GamePlayer(
+                game_session_id=game_session.id,
+                account_id=member.account_id,
+                seat_index=member.seat_index,
+            )
+            session.add(game_player)
+
         session.commit()
         return game_session
     except Exception:
