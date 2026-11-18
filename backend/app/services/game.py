@@ -88,6 +88,7 @@ def start_game(
             )
             session.add(game_player)
             game_players_by_seat[member.seat_index] = game_player
+        session.flush()
         
         shuffled_card_values = shuffle_deck(build_cabo_deck())
         initial_deal_result = deal_initial_cards(
@@ -100,10 +101,11 @@ def start_game(
                 game_session_id=game_session.id,
                 value=card_value,
                 location="Hand",
-                owner_game_player_id=game_players_by_seat[seat_index].account_id,
-                position=seat_index
+                owner_game_player_id=game_players_by_seat[seat_index].id,
+                position=position
             )
-            for seat_index, card_value in enumerate(initial_deal_result.hands_by_seat)
+            for seat_index, card_values in initial_deal_result.hands_by_seat.items()
+            for position, card_value in enumerate(card_values)
         )
         session.add_all(hand_cards)
 
