@@ -177,31 +177,36 @@ def initial_peek(
     try:
         game_session = session.execute(
             select(GameSession).where(
-                GameSession.id == game_session_id,
-                GameSession.ended_at.is_(None)
-            )
+                GameSession.id == game_session_id
+            ).with_for_update()
         ).scalar_one_or_none()
         if game_session is None:
-            raise exceptions.InvalidRequestException()
+            raise exceptions.GameNotAccessibleException()
+        
+        if game_session.ended_at is not None:
+            raise exceptions.GameAlreadyEndedException()
         
         if not (game_session.state == "Playing" 
                 and game_session.phase == "InitialPeek"
-                and game_session.initial_peek_deadline_at is not None
+            ):
+            raise exceptions.InvalidGameStateException()
+        
+        if not (game_session.initial_peek_deadline_at is not None
                 and game_session.initial_peek_deadline_at > datetime.now(timezone.utc)
             ):
-            raise exceptions.InvalidRequestException()
+            raise exceptions.InitialPeekExpiredException()
 
         game_player = session.execute(
             select(GamePlayer).where(
                 GamePlayer.game_session_id == game_session_id,
                 GamePlayer.account_id == user_account.id
-            ).with_for_update()
+            )
         ).scalar_one_or_none()
         if game_player is None:
             raise exceptions.RequesterWrongException()
         
         if game_player.initial_peek_completed:
-            raise exceptions.InvalidRequestException()
+            raise exceptions.InitialPeekCompletedException()
         
         game_card = session.execute(
             select(GameCard).where(
@@ -212,7 +217,7 @@ def initial_peek(
             )
         ).scalar_one_or_none()
         if game_card is None:
-            raise exceptions.InvalidRequestException()
+            raise exceptions.InvalidPeekTargetException(position)
 
         if game_player.initial_peek_1st_card_id is None:
             game_player.initial_peek_1st_card_id = game_card.id
@@ -230,13 +235,17 @@ def initial_peek(
                 raise exceptions.RepeatedPeekException(position)
 
             raise exceptions.InitialPeekCountExceedException()
-
-        return InitialPeekResult(
+        
+        result = InitialPeekResult(
             position=position,
             value=game_card.value,
             remaining_peek_count=remaining_peek_count,
             deadline_at=game_session.initial_peek_deadline_at,
         )
+
+        session.commit()
+
+        return result
     except Exception:
         session.rollback()
         raise

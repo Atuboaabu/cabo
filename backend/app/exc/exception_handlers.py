@@ -263,6 +263,84 @@ def register_exception_handlers(app: FastAPI)->None:
                 "detail": "Game player count invalid, please check" 
             }
         )
+    
+    @app.exception_handler(exceptions.GameNotAccessibleException)
+    async def game_not_accessible_handle(
+        request: Request,
+        exc: exceptions.GameNotAccessibleException
+    ):
+        return JSONResponse(
+            status_code = status.HTTP_409_CONFLICT,
+            content = {
+                "code": "GAME_NOT_ACCESSIBLE",
+                "detail": "Game not accessible"
+            }
+        )
+    
+    @app.exception_handler(exceptions.GameAlreadyEndedException)
+    async def game_already_ended_handle(
+        request: Request,
+        exc: exceptions.GameAlreadyEndedException
+    ):
+        return JSONResponse(
+            status_code = status.HTTP_409_CONFLICT,
+            content = {
+                "code": "GAME_ALREADY_ENDED",
+                "detail": "Game already ended"
+            }
+        )
+    
+    @app.exception_handler(exceptions.InvalidGameStateException)
+    async def game_state_invalid_handle(
+        request: Request,
+        exc: exceptions.InvalidGameStateException
+    ):
+        return JSONResponse(
+            status_code = status.HTTP_409_CONFLICT,
+            content = {
+                "code": "GAME_STATE_INVALID",
+                "detail": "Game state invalid"
+            }
+        )
+    
+    @app.exception_handler(exceptions.InitialPeekExpiredException)
+    async def initial_peek_expired_handle(
+        request: Request,
+        exc: exceptions.InitialPeekExpiredException
+    ):
+        return JSONResponse(
+            status_code = status.HTTP_409_CONFLICT,
+            content = {
+                "code": "INITIAL_PEEK_EXPIRED",
+                "detail": "Initial peek expired"
+            }
+        )
+    
+    @app.exception_handler(exceptions.InitialPeekCompletedException)
+    async def initial_peek_completed_handle(
+        request: Request,
+        exc: exceptions.InitialPeekCompletedException
+    ):
+        return JSONResponse(
+            status_code = status.HTTP_409_CONFLICT,
+            content = {
+                "code": "INITIAL_PEEK_COMPLETED",
+                "detail": "Initial peek already completed"
+            }
+        )
+    
+    @app.exception_handler(exceptions.InvalidPeekTargetException)
+    async def invalid_peek_target_handle(
+        request: Request,
+        exc: exceptions.InvalidPeekTargetException
+    ):
+        return JSONResponse(
+            status_code = status.HTTP_409_CONFLICT,
+            content = {
+                "code": "INVALID_PEEK_TARGET",
+                "detail": f"Invalid peek target: position = {exc.position}"
+            }
+        )
 
     @app.exception_handler(exceptions.RepeatedPeekException)
     async def repeated_peek_handle(
