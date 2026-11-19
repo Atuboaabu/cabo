@@ -180,7 +180,16 @@ def initial_peek(
                 GameSession.id == game_session_id
             ).with_for_update()
         ).scalar_one_or_none()
-        if game_session is None:
+
+        game_player = session.execute(
+            select(GamePlayer).where(
+                GamePlayer.game_session_id == game_session_id,
+                GamePlayer.account_id == user_account.id
+            )
+        ).scalar_one_or_none()
+
+        if (game_session is None
+            or game_player is None):
             raise exceptions.GameNotAccessibleException()
         
         if game_session.ended_at is not None:
@@ -190,20 +199,6 @@ def initial_peek(
                 and game_session.phase == "InitialPeek"
             ):
             raise exceptions.InvalidGameStateException()
-        
-        if not (game_session.initial_peek_deadline_at is not None
-                and game_session.initial_peek_deadline_at > datetime.now(timezone.utc)
-            ):
-            raise exceptions.InitialPeekExpiredException()
-
-        game_player = session.execute(
-            select(GamePlayer).where(
-                GamePlayer.game_session_id == game_session_id,
-                GamePlayer.account_id == user_account.id
-            )
-        ).scalar_one_or_none()
-        if game_player is None:
-            raise exceptions.RequesterWrongException()
         
         if game_player.initial_peek_completed:
             raise exceptions.InitialPeekCompletedException()
@@ -218,22 +213,24 @@ def initial_peek(
         ).scalar_one_or_none()
         if game_card is None:
             raise exceptions.InvalidPeekTargetException(position)
+        
+        if (game_player.initial_peek_1st_card_id == game_card.id 
+            or game_player.initial_peek_2nd_card_id == game_card.id
+        ):
+            raise exceptions.RepeatedPeekException(position)
+
+        if not (game_session.initial_peek_deadline_at is not None
+            and game_session.initial_peek_deadline_at > datetime.now(timezone.utc)
+        ):
+            raise exceptions.InitialPeekExpiredException()
 
         if game_player.initial_peek_1st_card_id is None:
             game_player.initial_peek_1st_card_id = game_card.id
             remaining_peek_count=1
         elif game_player.initial_peek_2nd_card_id is None:
-            if game_player.initial_peek_1st_card_id == game_card.id:
-                raise exceptions.RepeatedPeekException(position)
-
             game_player.initial_peek_2nd_card_id = game_card.id
             remaining_peek_count=0
         else:
-            if (game_player.initial_peek_1st_card_id == game_card.id or
-                game_player.initial_peek_2nd_card_id == game_card.id
-            ):
-                raise exceptions.RepeatedPeekException(position)
-
             raise exceptions.InitialPeekCountExceedException()
         
         result = InitialPeekResult(
