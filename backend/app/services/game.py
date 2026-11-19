@@ -401,40 +401,37 @@ def expire_initial_peek(
             session,
             game_session_id
         )
+
+        now = datetime.now(timezone.utc)
+
         if (game_session is None
             or game_session.ended_at is not None
             or game_session.state != "Playing"
             or game_session.phase != "InitialPeek"
-            or game_session.initial_peek_deadline_at is None
         ):
-            return InitialPeekTimeoutResult(
-                status="NotApplicable"
+            result = InitialPeekTimeoutResult(status="NotApplicable")
+        elif game_session.initial_peek_deadline_at is None:
+            raise exceptions.InvalidGameStateException()
+        elif game_session.initial_peek_deadline_at > now:
+            result = InitialPeekTimeoutResult(status="NotDue")
+        else:
+            session.execute(
+                update(GamePlayer).where(
+                    GamePlayer.game_session_id == game_session_id,
+                    GamePlayer.initial_peek_completed.is_(False)
+                ).values(
+                    initial_peek_completed=True
+                )
             )
-        
-        now = datetime.now(timezone.utc)
-        if game_session.initial_peek_deadline_at < now:
-            return InitialPeekTimeoutResult(
-                status="NotDue"
-            ) 
-        
-        session.execute(
-            update(GamePlayer).where(
-                GamePlayer.game_session_id == game_session_id,
-                GamePlayer.initial_peek_completed.is_(False)
-            ).values(
-                initial_peek_completed=True
-            )
-        )
 
-        _transition_to_player_turn(
-            session,
-            game_session
-        )
+            _transition_to_player_turn(
+                session,
+                game_session
+            )
+            result = InitialPeekTimeoutResult(status="Transitioned")
 
         session.commit()
-        return InitialPeekTimeoutResult(
-            status="Transitioned"
-        )
+        return result
     except Exception:
         session.rollback()
         raise
