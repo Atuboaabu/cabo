@@ -288,20 +288,22 @@ def complete_initial_peek(
         game_player.initial_peek_completed = True
         session.flush()
 
-        exist_players_not_completed = session.execute(
+        has_uncompleted_players = session.execute(
             select(
                 exists().where(
                     GamePlayer.game_session_id == game_session_id,
                     GamePlayer.initial_peek_completed == False
                 )
             )
+        ).scalar_one()
+
+        result = InitialPeekCompleteResult(
+            all_players_completed = not has_uncompleted_players
         )
 
         session.commit()
 
-        return InitialPeekCompleteResult(
-            all_players_completed = not exist_players_not_completed
-        )
+        return result
     except Exception:
         session.rollback()
         raise
