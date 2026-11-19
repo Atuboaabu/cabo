@@ -132,9 +132,12 @@ def start_game(
             for index, card_value in enumerate(initial_deal_result.remaining_draw_pile)
         )
         session.add_all(draw_cards)
-
-        game_session.initial_peek_deadline_at = datetime.now(timezone.utc) + timedelta(seconds=INITIAL_PEEK_DURATION_SECONDS)
         session.flush()
+
+        game_session.initial_peek_deadline_at = (
+            datetime.now(timezone.utc) +
+            timedelta(seconds=INITIAL_PEEK_DURATION_SECONDS)
+        )
 
         session.commit()
         return game_session
