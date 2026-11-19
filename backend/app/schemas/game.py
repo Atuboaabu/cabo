@@ -1,3 +1,4 @@
+from typing import Literal
 from uuid import UUID
 from datetime import datetime
 from pydantic import BaseModel
@@ -16,3 +17,6 @@ class InitialPeekResult(BaseModel):
 
 class InitialPeekCompleteResult(BaseModel):
     all_players_completed: bool
+
+class InitialPeekTimeoutResult(BaseModel):
+    status: Literal["Transitioned", "NotDue", "NotApplicable"]
