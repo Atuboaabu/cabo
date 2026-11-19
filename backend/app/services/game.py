@@ -1,15 +1,15 @@
 from uuid import UUID
 from sqlalchemy.orm import Session
-from sqlalchemy import select
+from sqlalchemy import select, exists
 from datetime import datetime, timezone, timedelta
 
 from app.models import UserAccount, Room, RoomMember, GameSession, GamePlayer, GameCard
 from app.exc import exceptions
-from app.schemas import GameStartResponse, InitialPeekResult
+from app.schemas import GameStartResponse, InitialPeekResult, InitialPeekCompleteResult
 from app.database import engine
 from app.services import auth
 from app.game_logic import (build_cabo_deck, shuffle_deck, deal_initial_cards,
-                            InitialDealResult, INITIAL_PEEK_DURATION_SECONDS)
+                            INITIAL_PEEK_DURATION_SECONDS)
 
 def validate_start_game(
     session: Session,
@@ -167,7 +167,34 @@ def execute_start_game(
             state=game_session.state,
             started_at=game_session.started_at
         )
+
+def _get_locked_game_context(
+    session: Session,
+    user_account: UserAccount,
+    game_session_id: UUID
+)->tuple[GameSession, GamePlayer]:
+    game_session = session.execute(
+        select(GameSession).where(
+            GameSession.id == game_session_id
+        ).with_for_update()
+    ).scalar_one_or_none()
+
+    game_player = session.execute(
+        select(GamePlayer).where(
+            GamePlayer.game_session_id == game_session_id,
+            GamePlayer.account_id == user_account.id
+        )
+    ).scalar_one_or_none()
+
+    if (game_session is None
+        or game_player is None):
+        raise exceptions.GameNotAccessibleException()
     
+    if game_session.ended_at is not None:
+        raise exceptions.GameAlreadyEndedException()
+    
+    return game_session, game_player
+
 def initial_peek(
     session: Session,
     user_account: UserAccount,
@@ -175,25 +202,11 @@ def initial_peek(
     position: int
 )-> InitialPeekResult:
     try:
-        game_session = session.execute(
-            select(GameSession).where(
-                GameSession.id == game_session_id
-            ).with_for_update()
-        ).scalar_one_or_none()
-
-        game_player = session.execute(
-            select(GamePlayer).where(
-                GamePlayer.game_session_id == game_session_id,
-                GamePlayer.account_id == user_account.id
-            )
-        ).scalar_one_or_none()
-
-        if (game_session is None
-            or game_player is None):
-            raise exceptions.GameNotAccessibleException()
-        
-        if game_session.ended_at is not None:
-            raise exceptions.GameAlreadyEndedException()
+        game_session, game_player = _get_locked_game_context(
+            session,
+            user_account,
+            game_session_id
+        )
         
         if not (game_session.state == "Playing" 
                 and game_session.phase == "InitialPeek"
@@ -243,6 +256,52 @@ def initial_peek(
         session.commit()
 
         return result
+    except Exception:
+        session.rollback()
+        raise
+
+def complete_initial_peek(
+    session: Session,
+    user_account: UserAccount,
+    game_session_id: UUID
+)->InitialPeekCompleteResult:
+    try:
+        game_session, game_player = _get_locked_game_context(
+            session,
+            user_account,
+            game_session_id
+        )
+
+        if not (game_session.state == "Playing" 
+                and game_session.phase == "InitialPeek"
+            ):
+            raise exceptions.InvalidGameStateException()
+        
+        if game_player.initial_peek_completed:
+            raise exceptions.InitialPeekCompletedException()
+        
+        if not (game_session.initial_peek_deadline_at is not None
+            and game_session.initial_peek_deadline_at > datetime.now(timezone.utc)
+        ):
+            raise exceptions.InitialPeekExpiredException()
+        
+        game_player.initial_peek_completed = True
+        session.flush()
+
+        exist_players_not_completed = session.execute(
+            select(
+                exists().where(
+                    GamePlayer.game_session_id == game_session_id,
+                    GamePlayer.initial_peek_completed == False
+                )
+            )
+        )
+
+        session.commit()
+
+        return InitialPeekCompleteResult(
+            all_players_completed = not exist_players_not_completed
+        )
     except Exception:
         session.rollback()
         raise

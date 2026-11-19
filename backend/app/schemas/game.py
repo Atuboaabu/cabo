@@ -13,3 +13,6 @@ class InitialPeekResult(BaseModel):
     value: int
     remaining_peek_count: int
     deadline_at: datetime
+
+class InitialPeekCompleteResult(BaseModel):
+    all_players_completed: bool
