@@ -1,8 +1,8 @@
 """create game_turns table
 
-Revision ID: 8251e9befa9d
+Revision ID: 8fb9c5503b4a
 Revises: 1ee569307cce
-Create Date: 2026-11-19 15:33:12.173948
+Create Date: 2026-11-19 15:41:58.160654
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '8251e9befa9d'
+revision: str = '8fb9c5503b4a'
 down_revision: Union[str, Sequence[str], None] = '1ee569307cce'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -31,13 +31,14 @@ def upgrade() -> None:
     sa.Column('deadline_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('ended_at', sa.DateTime(timezone=True), nullable=True),
-    sa.CheckConstraint("state = 'AwaitingAction' OR ended_at IS NOT NULL", name='ck_game_turns_state_valid'),
+    sa.CheckConstraint("(state = 'AwaitingAction' AND ended_at IS NULL) OR (state IN ('Completed', 'Aborted') AND ended_at IS NOT NULL)", name='ck_game_turns_state_valid'),
     sa.CheckConstraint("state IN ('AwaitingAction', 'Completed', 'Aborted')", name='ck_game_turns_state_inrange'),
     sa.CheckConstraint('(started_at < deadline_at) AND (ended_at IS NULL OR ended_at >= started_at)', name='ck_game_turns_timestamp_valid'),
     sa.CheckConstraint('turn_number >= 1', name='ck_game_turns_turn_number_positive'),
     sa.ForeignKeyConstraint(['game_player_id'], ['game_players.id'], ),
     sa.ForeignKeyConstraint(['game_session_id'], ['game_sessions.id'], ),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('game_session_id', 'turn_number', name='uq_game_turns_turn_number_in_game_session')
     )
     op.create_index('uq_game_turns_game_session_id', 'game_turns', ['game_session_id'], unique=True, postgresql_where=sa.text('ended_at IS NULL'))
     # ### end Alembic commands ###

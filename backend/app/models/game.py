@@ -213,12 +213,19 @@ class GameTurn(Base):
             "turn_number >= 1",
             name="ck_game_turns_turn_number_positive"
         ),
+        UniqueConstraint(
+            "game_session_id",
+            "turn_number",
+            name="uq_game_turns_turn_number_in_game_session"
+        ),
         CheckConstraint(
             "state IN ('AwaitingAction', 'Completed', 'Aborted')",
             name="ck_game_turns_state_inrange"
         ),
         CheckConstraint(
-            "state = 'AwaitingAction' OR ended_at IS NOT NULL",
+            "(state = 'AwaitingAction' AND ended_at IS NULL) "
+            "OR "
+            "(state IN ('Completed', 'Aborted') AND ended_at IS NOT NULL)",
             name="ck_game_turns_state_valid"
         ),
         CheckConstraint(
