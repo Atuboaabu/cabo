@@ -329,6 +329,19 @@ def register_exception_handlers(app: FastAPI)->None:
             }
         )
     
+    @app.exception_handler(exceptions.InitialPeekNotCompletedException)
+    async def initial_peek_not_completed_handle(
+        request: Request,
+        exc: exceptions.InitialPeekNotCompletedException
+    ):
+        return JSONResponse(
+            status_code = status.HTTP_409_CONFLICT,
+            content = {
+                "code": "INITIAL_PEEK_NOT_COMPLETED",
+                "detail": "Initial peek not completed"
+            }
+        )
+    
     @app.exception_handler(exceptions.InvalidPeekTargetException)
     async def invalid_peek_target_handle(
         request: Request,
@@ -365,5 +378,18 @@ def register_exception_handlers(app: FastAPI)->None:
             content = {
                 "code": "INITIAL_PEEK_COUNT_EXCEED",
                 "detail": "Initial peek count exceed" 
+            }
+        )
+    
+    @app.exception_handler(exceptions.GameTurnAlreadyCreatedException)
+    async def game_turn_already_created_handle(
+        request: Request,
+        exc: exceptions.GameTurnAlreadyCreatedException
+    ):
+        return JSONResponse(
+            status_code = status.HTTP_409_CONFLICT,
+            content = {
+                "code": "GAME_TURN_ALREADY_CREATED",
+                "detail": "Game turn already created" 
             }
         )

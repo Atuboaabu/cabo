@@ -2,14 +2,17 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 from sqlalchemy import select, exists
 from datetime import datetime, timezone, timedelta
+import random
 
-from app.models import UserAccount, Room, RoomMember, GameSession, GamePlayer, GameCard
+from app.models import (UserAccount, Room, RoomMember,
+                        GameSession, GamePlayer, GameCard,
+                        GameTurn)
 from app.exc import exceptions
 from app.schemas import GameStartResponse, InitialPeekResult, InitialPeekCompleteResult
 from app.database import engine
 from app.services import auth
 from app.game_logic import (build_cabo_deck, shuffle_deck, deal_initial_cards,
-                            INITIAL_PEEK_DURATION_SECONDS)
+                            INITIAL_PEEK_DURATION_SECONDS, TURN_DURATION_SECONDS)
 
 def validate_start_game(
     session: Session,
@@ -260,6 +263,64 @@ def initial_peek(
         session.rollback()
         raise
 
+def _create_first_game_turn(
+    session: Session,
+    game_session: GameSession
+)->GameTurn:
+    if not (game_session.state == "Playing" 
+        and game_session.phase == "InitialPeek"
+    ):
+        raise exceptions.InvalidGameStateException()
+
+    players = session.execute(
+        select(GamePlayer).where(
+            GamePlayer.game_session_id == game_session.id
+        )
+    ).scalars().all()
+    if not all(
+        player.initial_peek_completed
+        for player in players
+    ):
+        raise exceptions.InitialPeekNotCompletedException()
+    
+    turn_created = session.execute(
+        select(
+            exists().where(
+                GameTurn.game_session_id == game_session.id,
+            )
+        )
+    ).scalar_one()
+    if turn_created:
+        raise exceptions.GameTurnAlreadyCreatedException()
+    
+    first_player = random.choice(players)
+    now=datetime.now(timezone.utc)
+    first_game_turn = GameTurn(
+        game_session_id=game_session.id,
+        game_player_id=first_player.id,
+        turn_number=1,
+        state="AwaitingAction",
+        started_at=now,
+        deadline_at=now+timedelta(seconds=TURN_DURATION_SECONDS),
+        ended_at=None
+    )
+    session.add(first_game_turn)
+    session.flush()
+    return first_game_turn
+
+def _transition_to_player_turn(
+    session: Session,
+    game_session: GameSession
+)->GameTurn:
+    game_session.state = "Playing"
+    session.flush()
+
+    return _create_first_game_turn(
+        session,
+        game_session
+    )
+
+
 def complete_initial_peek(
     session: Session,
     user_account: UserAccount,
@@ -273,8 +334,8 @@ def complete_initial_peek(
         )
 
         if not (game_session.state == "Playing" 
-                and game_session.phase == "InitialPeek"
-            ):
+            and game_session.phase == "InitialPeek"
+        ):
             raise exceptions.InvalidGameStateException()
         
         if game_player.initial_peek_completed:
@@ -300,6 +361,12 @@ def complete_initial_peek(
         result = InitialPeekCompleteResult(
             all_players_completed = not has_uncompleted_players
         )
+
+        if not has_uncompleted_players:
+            _transition_to_player_turn(
+                session,
+                game_session
+            )
 
         session.commit()
 

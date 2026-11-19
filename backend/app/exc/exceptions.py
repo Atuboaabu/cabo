@@ -78,6 +78,9 @@ class InitialPeekExpiredException(Exception):
 class InitialPeekCompletedException(Exception):
     pass
 
+class InitialPeekNotCompletedException(Exception):
+    pass
+
 class InvalidPeekTargetException(Exception):
     def __init__(self, position: int) -> None:
         self.position = position
@@ -87,4 +90,7 @@ class RepeatedPeekException(Exception):
         self.position = position
 
 class InitialPeekCountExceedException(Exception):
+    pass
+
+class GameTurnAlreadyCreatedException(Exception):
     pass
