@@ -62,3 +62,10 @@ class GameMembersNotReadyException(Exception):
 
 class GamePlayerCountInvalidException(Exception):
     pass
+
+class RepeatedPeekException(Exception):
+    def __init__(self, position: int) -> None:
+        self.position = position
+
+class InitialPeekCountExceedException(Exception):
+    pass

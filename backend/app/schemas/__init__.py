@@ -3,4 +3,4 @@ from .auth import VerificationCodeRequest
 from .room import (RoomResponse, ROOM_CODE_ALPHABET, RoomJoinRequest,
                    RoomReadyRequest, RoomReadyResponse, RoomMemberView,
                    RoomView)
-from .game import GameStartResponse
+from .game import GameStartResponse, InitialPeekResult

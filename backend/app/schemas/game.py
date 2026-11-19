@@ -7,3 +7,9 @@ class GameStartResponse(BaseModel):
     room_id: UUID
     state: str
     started_at: datetime
+
+class InitialPeekResult(BaseModel):
+    position: int
+    value: int
+    remaining_peek_count: int
+    deadline_at: datetime

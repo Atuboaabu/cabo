@@ -263,3 +263,29 @@ def register_exception_handlers(app: FastAPI)->None:
                 "detail": "Game player count invalid, please check" 
             }
         )
+
+    @app.exception_handler(exceptions.RepeatedPeekException)
+    async def repeated_peek_handle(
+        request: Request,
+        exc: exceptions.RepeatedPeekException
+    ):
+        return JSONResponse(
+            status_code = status.HTTP_409_CONFLICT,
+            content = {
+                "code": "REPEATED_PEEK",
+                "detail": f"Repeated peek for position {exc.position}" 
+            }
+        )
+    
+    @app.exception_handler(exceptions.InitialPeekCountExceedException)
+    async def initial_peek_count_exceed_handle(
+        request: Request,
+        exc: exceptions.InitialPeekCountExceedException
+    ):
+        return JSONResponse(
+            status_code = status.HTTP_409_CONFLICT,
+            content = {
+                "code": "INITIAL_PEEK_COUNT_EXCEED",
+                "detail": "Initial peek count exceed" 
+            }
+        )

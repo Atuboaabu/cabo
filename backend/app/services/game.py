@@ -5,7 +5,7 @@ from datetime import datetime, timezone, timedelta
 
 from app.models import UserAccount, Room, RoomMember, GameSession, GamePlayer, GameCard
 from app.exc import exceptions
-from app.schemas import GameStartResponse
+from app.schemas import GameStartResponse, InitialPeekResult
 from app.database import engine
 from app.services import auth
 from app.game_logic import (build_cabo_deck, shuffle_deck, deal_initial_cards,
@@ -167,3 +167,76 @@ def execute_start_game(
             state=game_session.state,
             started_at=game_session.started_at
         )
+    
+def initial_peek(
+    session: Session,
+    user_account: UserAccount,
+    game_session_id: UUID,
+    position: int
+)-> InitialPeekResult:
+    try:
+        game_session = session.execute(
+            select(GameSession).where(
+                GameSession.id == game_session_id,
+                GameSession.ended_at.is_(None)
+            )
+        ).scalar_one_or_none()
+        if game_session is None:
+            raise exceptions.InvalidRequestException()
+        
+        if not (game_session.state == "Playing" 
+                and game_session.phase == "InitialPeek"
+                and game_session.initial_peek_deadline_at is not None
+                and game_session.initial_peek_deadline_at > datetime.now(timezone.utc)
+            ):
+            raise exceptions.InvalidRequestException()
+
+        game_player = session.execute(
+            select(GamePlayer).where(
+                GamePlayer.game_session_id == game_session_id,
+                GamePlayer.account_id == user_account.id
+            ).with_for_update()
+        ).scalar_one_or_none()
+        if game_player is None:
+            raise exceptions.RequesterWrongException()
+        
+        if game_player.initial_peek_completed:
+            raise exceptions.InvalidRequestException()
+        
+        game_card = session.execute(
+            select(GameCard).where(
+                GameCard.game_session_id == game_session.id,
+                GameCard.owner_game_player_id == game_player.id,
+                GameCard.location == "Hand",
+                GameCard.position == position,
+            )
+        ).scalar_one_or_none()
+        if game_card is None:
+            raise exceptions.InvalidRequestException()
+
+        if game_player.initial_peek_1st_card_id is None:
+            game_player.initial_peek_1st_card_id = game_card.id
+            remaining_peek_count=1
+        elif game_player.initial_peek_2nd_card_id is None:
+            if game_player.initial_peek_1st_card_id == game_card.id:
+                raise exceptions.RepeatedPeekException(position)
+
+            game_player.initial_peek_2nd_card_id = game_card.id
+            remaining_peek_count=0
+        else:
+            if (game_player.initial_peek_1st_card_id == game_card.id or
+                game_player.initial_peek_2nd_card_id == game_card.id
+            ):
+                raise exceptions.RepeatedPeekException(position)
+
+            raise exceptions.InitialPeekCountExceedException()
+
+        return InitialPeekResult(
+            position=position,
+            value=game_card.value,
+            remaining_peek_count=remaining_peek_count,
+            deadline_at=game_session.initial_peek_deadline_at,
+        )
+    except Exception:
+        session.rollback()
+        raise
