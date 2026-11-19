@@ -205,3 +205,76 @@ class GameCard(Base):
         server_default=func.now(),
         nullable=False
     )
+
+class GameTurn(Base):
+    __tablename__ = "game_turns"
+    __table_args__ = (
+        CheckConstraint(
+            "turn_number >= 1",
+            name="ck_game_turns_turn_number_positive"
+        ),
+        CheckConstraint(
+            "state IN ('AwaitingAction', 'Completed', 'Aborted')",
+            name="ck_game_turns_state_inrange"
+        ),
+        CheckConstraint(
+            "state = 'AwaitingAction' OR ended_at IS NOT NULL",
+            name="ck_game_turns_state_valid"
+        ),
+        CheckConstraint(
+            "(started_at < deadline_at) AND (ended_at IS NULL OR ended_at >= started_at)",
+            name="ck_game_turns_timestamp_valid"
+        ),
+        Index(
+            "uq_game_turns_game_session_id",
+            "game_session_id",
+            unique=True,
+            postgresql_where=text("ended_at IS NULL")
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        default=uuid.uuid4,
+        primary_key=True,
+    )
+
+    game_session_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("game_sessions.id"),
+        nullable=False
+    )
+
+    game_player_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("game_players.id"),
+        nullable=False
+    )
+
+    turn_number: Mapped[int] = mapped_column(
+        nullable=False
+    )
+
+    state: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False
+    )
+
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False
+    )
+
+    deadline_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False
+    )
+
+    ended_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
