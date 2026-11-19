@@ -277,6 +277,10 @@ def _create_first_game_turn(
             GamePlayer.game_session_id == game_session.id
         )
     ).scalars().all()
+
+    if not 2 <= len(players) <= 4:
+        raise exceptions.GamePlayerCountInvalidException()
+
     if not all(
         player.initial_peek_completed
         for player in players
@@ -312,13 +316,15 @@ def _transition_to_player_turn(
     session: Session,
     game_session: GameSession
 )->GameTurn:
-    game_session.state = "Playing"
-    session.flush()
-
-    return _create_first_game_turn(
+    first_game_turn = _create_first_game_turn(
         session,
         game_session
     )
+
+    game_session.phase = "PlayerTurn"
+    session.flush()
+
+    return first_game_turn
 
 
 def complete_initial_peek(
