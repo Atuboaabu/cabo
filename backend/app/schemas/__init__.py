@@ -4,4 +4,7 @@ from .room import (RoomResponse, ROOM_CODE_ALPHABET, RoomJoinRequest,
                    RoomReadyRequest, RoomReadyResponse, RoomMemberView,
                    RoomView)
 from .game import (GameStartResponse, InitialPeekResult,
-                   InitialPeekCompleteResult, InitialPeekTimeoutResult)
+                   InitialPeekCompleteResult, InitialPeekTimeoutResult,
+                   FaceDownCardView, FaceUpCardView, CardView,
+                   GamePlayerView, DrawPileView, DiscardPileView,
+                   ActiveTurnView, GameView)
