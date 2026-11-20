@@ -49,7 +49,13 @@ class Setting(BaseSettings):
 
     rate_limit_hmac_key: bytes
 
-    game_timeout_poll_interval_seconds: float = 0.5
-    game_timeout_batch_size: int = 100
+    game_timeout_poll_interval_seconds: float = Field(
+        default=0.5,
+        gt=0
+    )
+    game_timeout_batch_size: int = Field(
+        default=100,
+        gt=0
+    )
 
 settings = Setting()
