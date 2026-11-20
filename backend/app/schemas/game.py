@@ -28,7 +28,7 @@ class FaceDownCardView(BaseModel):
 class FaceUpCardView(BaseModel):
     position: int = Field(ge=0)
     face_up: Literal[True] = True
-    value: int = Field(ge=0)
+    value: int = Field(ge=0, le=13)
 
 CardView = FaceDownCardView | FaceUpCardView
 
@@ -38,7 +38,9 @@ class GamePlayerView(BaseModel):
     seat_index: Annotated[int, Field(ge=0, le=3)]
     hand_cards: list[CardView]
     initial_peek_completed: bool
-    initial_peek_confirmed_positions: list[int] = Field(max_length=2)
+    initial_peek_confirmed_positions: list[
+        Annotated[int, Field(ge=0, le=3)]
+    ] = Field(max_length=2)
 
 class DrawPileView(BaseModel):
     card_count: int = Field(ge=0)

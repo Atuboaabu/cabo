@@ -11,7 +11,7 @@ from app.exc import exceptions
 from app.schemas import (GameStartResponse, InitialPeekResult,
                          InitialPeekCompleteResult, InitialPeekTimeoutResult,
                          GamePlayerView, GameView, FaceDownCardView,
-                         FaceUpCardView, CardView, DrawPileView, DiscardPileView,
+                         DrawPileView, DiscardPileView,
                          ActiveTurnView)
 from app.database import engine
 from app.services import auth
@@ -443,28 +443,15 @@ def get_game_view(
     session: Session,
     user_account: UserAccount,
     game_session_id: UUID,
-)->GameView:
-    game_session = session.execute(
-        select(GameSession).where(
-            GameSession.id == game_session_id
-        )
-    ).scalar_one_or_none()
-    if not game_session:
-        raise exceptions.GameNotAccessibleException()
-    
-    if game_session.ended_at:
-        raise exceptions.GameAlreadyEndedException()
+)->GameView | None:
+    game_session, viewer = _get_locked_game_context(
+        session,
+        user_account,
+        game_session_id
+    )
 
-    user_in_game = session.execute(
-        select().where(
-            exists().where(
-                GamePlayer.game_session_id == game_session_id,
-                GamePlayer.account_id == user_account.id
-            )
-        )
-    ).scalars().all()
-    if not user_in_game:
-        raise exceptions.RequesterWrongException()
+    if game_session.phase == "InitialPeek":
+        return None
 
     players_info = session.execute(
         select(
@@ -483,10 +470,10 @@ def get_game_view(
     if not 2 <= len(players_info) <= 4:
         raise exceptions.GamePlayerCountInvalidException()
     
-    players_ids = [
-        player.id
+    players_by_id = {
+        player.id: player
         for player, _ in players_info
-    ]
+    }
     players_hand_cards = session.execute(
         select(
             GameCard,
@@ -495,7 +482,9 @@ def get_game_view(
             GamePlayer,
             GameCard.owner_game_player_id == GamePlayer.id
         ).where(
-            GameCard.owner_game_player_id.in_(players_ids)
+            GameCard.game_session_id == game_session_id,
+            GameCard.location == "Hand",
+            GameCard.owner_game_player_id.in_(list(players_by_id.keys()))
         ).order_by(
             GameCard.position
         )
@@ -522,7 +511,8 @@ def get_game_view(
                     game_player.initial_peek_1st_card_id,
                     game_player.initial_peek_2nd_card_id
                 ]
-                if (game_player.id == player_id
+                if (game_session.phase == "InitialPeek"
+                    and game_player.id == player_id
                     and card_id is not None
                     and game_card.id == card_id)
             ]
@@ -540,21 +530,26 @@ def get_game_view(
     ).scalar_one()
     draw_pile_view = DrawPileView(card_count=draw_pile_card_count)
 
-    discard_piles = session.execute(
-        select(GameCard).where(
+    discard_top_card_value = session.execute(
+        select(GameCard.value).where(
             GameCard.game_session_id == game_session_id,
             GameCard.location == "DiscardPile"
         ).order_by(
-            GameCard.created_at
+            GameCard.position.desc
+        ).limit(1)
+    ).scalar_one_or_none()
+    discard_pile_count = session.execute(
+        select(func.count()).where(
+            GameCard.game_session_id == game_session_id,
+            GameCard.location == "DiscardPile"
+        ).select_from(
+            GameCard
         )
-    ).scalars().all()
+    ).scalar_one()
+
     discard_pile_view = DiscardPileView(
-        card_count=len(discard_piles),
-        top_card_value=(
-            discard_piles[-1].value
-            if len(discard_piles) > 0
-            else None
-        )
+        card_count=discard_pile_count,
+        top_card_value=discard_top_card_value
     )
 
     game_turn = session.execute(
@@ -564,31 +559,39 @@ def get_game_view(
         )
     ).scalar_one_or_none()
     if game_turn is None:
-        raise exceptions.GameNotAccessibleException()
+        raise exceptions.InvalidGameStateException()
+
+    acting_player = players_by_id.get(game_turn.game_player_id)
+    if acting_player is None:
+        raise exceptions.InvalidGameStateException()
 
     active_turn_view = ActiveTurnView(
         id=game_turn.id,
         turn_number=game_turn.turn_number,
-        acting_account_id=game_turn.game_player_id,
-        started_at=game_turn.created_at,
+        acting_account_id=acting_player.account_id,
+        started_at=game_turn.started_at,
         deadline_at=game_turn.deadline_at
     )
 
-    return GameView(
+    game_view = GameView(
         id=game_session.id,
         room_id=game_session.room_id,
         state=game_session.state,
         phase=game_session.phase,
-        viewer_account_id=user_account.id,
+        viewer_account_id=viewer.account_id,
         players=players_views,
         draw_pile=draw_pile_view,
         discard_pile=discard_pile_view,
         active_turn=active_turn_view,
         initial_peek_deadline_at=(
-            game_turn.deadline_at
-            if game_turn.turn_number == 1
+            game_session.initial_peek_deadline_at
+            if game_session.phase == "InitialPeek"
             else None
         ),
         server_time=datetime.now(timezone.utc),
         schema_version=0
     )
+
+    session.commit()
+
+    return game_view
