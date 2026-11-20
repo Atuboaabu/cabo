@@ -1,7 +1,7 @@
-from typing import Literal
+from typing import Literal, Self, Annotated
 from uuid import UUID
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 class GameStartResponse(BaseModel):
     id: UUID
@@ -35,17 +35,31 @@ CardView = FaceDownCardView | FaceUpCardView
 class GamePlayerView(BaseModel):
     account_id: UUID
     username: str
-    seat_index: int = Field(ge=0)
+    seat_index: Annotated[int, Field(ge=0, le=3)]
     hand_cards: list[CardView]
     initial_peek_completed: bool
-    initial_peek_positions: list[int]
+    initial_peek_confirmed_positions: list[int] = Field(max_length=2)
 
 class DrawPileView(BaseModel):
     card_count: int = Field(ge=0)
 
 class DiscardPileView(BaseModel):
     card_count: int = Field(ge=0)
-    top_card_value: int | None
+    top_card_value: Annotated[int, Field(ge=0, le=13)] | None
+
+    @model_validator(mode="after")
+    def validate_pile_state(self)->Self:
+        if self.card_count == 0 and self.top_card_value is not None:
+            raise ValueError(
+                "Empty discard pile must have no top card"
+            )
+        
+        if self.card_count != 0 and self.top_card_value is None:
+            raise ValueError(
+                "No-Empty discard pile must have a top card"
+            )
+        
+        return self
 
 class ActiveTurnView(BaseModel):
     id: UUID
