@@ -451,6 +451,9 @@ def get_game_view(
             game_session_id
         )
 
+        if game_session.state != "Playing":
+            raise exceptions.InvalidGameStateException()
+
         players_info = session.execute(
             select(
                 GamePlayer,
