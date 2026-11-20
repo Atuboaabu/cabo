@@ -3,8 +3,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 from datetime import datetime, timezone
 from logging import getLogger
-from time import sleep
-from threading import Thread, Event
+from time import monotonic
+from threading import Event
 import signal
 
 from app.models import GameSession
@@ -13,21 +13,17 @@ from app.services.game import expire_initial_peek
 from app.logging_config import configure_logging
 from app.config import settings
 
-configure_logging()
-
 logger = getLogger(__name__)
-
 stop_event = Event()
+retry_after_by_game_ids: dict[UUID, float] = {}
 
 def signal_handle(signum, frame):
     stop_event.set()
 
-signal.signal(signal.SIGTERM, signal_handle)
-signal.signal(signal.SIGINT, signal_handle)
-
 def find_expired_initial_game_ids(
     session: Session,
-    limit: int
+    limit: int,
+    exclude_game_ids: list[UUID]
 )->list[UUID]:
     assert limit > 0
 
@@ -38,7 +34,8 @@ def find_expired_initial_game_ids(
             GameSession.phase == "InitialPeek",
             GameSession.ended_at.is_(None),
             GameSession.initial_peek_deadline_at.is_not(None),
-            GameSession.initial_peek_deadline_at <= now
+            GameSession.initial_peek_deadline_at <= now,
+            GameSession.id.not_in(exclude_game_ids)
         ).order_by(
             GameSession.initial_peek_deadline_at,
             GameSession.id
@@ -54,7 +51,8 @@ def process_initial_peek_timeout()->None:
         with Session(engine) as session:
             timeout_game_session_ids = find_expired_initial_game_ids(
                 session,
-                settings.game_timeout_batch_size
+                settings.game_timeout_batch_size,
+                list(retry_after_by_game_ids.keys())
             )
         
         if not timeout_game_session_ids:
@@ -68,6 +66,9 @@ def process_initial_peek_timeout()->None:
         return
 
     for game_session_id in timeout_game_session_ids:
+        if stop_event.is_set():
+            break
+
         try:
             with Session(engine) as session:
                 result = expire_initial_peek(
@@ -78,8 +79,12 @@ def process_initial_peek_timeout()->None:
                 if result.status == "NotDue":
                     continue
                 elif result.status == "NotApplicable":
+                    retry_after_by_game_ids[game_session_id] = (
+                        monotonic() + 5.0
+                    )
                     continue
                 elif result.status == "Transitioned":
+                    retry_after_by_game_ids.pop(game_session_id)
                     logger.info(
                         "game %s expire initial peek transition success", game_session_id
                     )
@@ -92,8 +97,21 @@ def process_initial_peek_timeout()->None:
             continue
     stop_event.wait(settings.game_timeout_poll_interval_seconds)
 
+def clear_retry_after_games()->None:
+    now = monotonic()
+    for game_id, deadline in retry_after_by_game_ids.copy().items():
+        if now >= deadline:
+            retry_after_by_game_ids.pop(game_id)
+
 def run_game_timeout_worker()->None:
+    configure_logging()
+
+    signal.signal(signal.SIGTERM, signal_handle)
+    signal.signal(signal.SIGINT, signal_handle)
+
     while not stop_event.is_set():
+        clear_retry_after_games()
         process_initial_peek_timeout()
+
 if __name__ == "__main__":
     run_game_timeout_worker()
