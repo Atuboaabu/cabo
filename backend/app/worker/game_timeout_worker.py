@@ -56,13 +56,12 @@ def process_initial_peek_timeout()->None:
             )
         
         if not timeout_game_session_ids:
-            stop_event.wait(settings.game_timeout_poll_interval_seconds)
             return
     except Exception as exc:
-        logger.warning(
-            "find expired game occurs exception: %s", str(exc)
+        logger.exception(
+            "find expired game occurs exception",
+            exc_info=exc
         )
-        stop_event.wait(settings.game_timeout_poll_interval_seconds)
         return
 
     for game_session_id in timeout_game_session_ids:
@@ -79,23 +78,22 @@ def process_initial_peek_timeout()->None:
                 if result.status == "NotDue":
                     continue
                 elif result.status == "NotApplicable":
-                    retry_after_by_game_ids[game_session_id] = (
-                        monotonic() + 5.0
-                    )
                     continue
                 elif result.status == "Transitioned":
-                    retry_after_by_game_ids.pop(game_session_id)
+                    retry_after_by_game_ids.pop(game_session_id, None)
                     logger.info(
                         "game %s expire initial peek transition success", game_session_id
                     )
         except Exception as exc:
+            retry_after_by_game_ids[game_session_id] = (
+                monotonic() + 5.0
+            )
             logger.exception(
                 "game %s expire initial peek occurs exception",
                 game_session_id,
                 exc_info=exc
             )
             continue
-    stop_event.wait(settings.game_timeout_poll_interval_seconds)
 
 def clear_retry_after_games()->None:
     now = monotonic()
@@ -112,6 +110,7 @@ def run_game_timeout_worker()->None:
     while not stop_event.is_set():
         clear_retry_after_games()
         process_initial_peek_timeout()
+        stop_event.wait(settings.game_timeout_poll_interval_seconds)
 
 if __name__ == "__main__":
     run_game_timeout_worker()
