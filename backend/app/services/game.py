@@ -607,7 +607,8 @@ def get_game_view(
                 else None
             ),
             server_time=datetime.now(timezone.utc),
-            schema_version=game_session.state_revision
+            schema_version=1,
+            state_revision=game_session.state_revision
         )
 
         session.commit()

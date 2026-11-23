@@ -82,7 +82,8 @@ class GameView(BaseModel):
     active_turn: ActiveTurnView | None
     initial_peek_deadline_at: datetime | None
     server_time: datetime
-    schema_version: int
+    schema_version: int = Field(ge=1)
+    state_revision: int = Field(ge=0)
 
 class InitialPeekCardView(BaseModel):
     position: int = Field(ge=0, le=3)
