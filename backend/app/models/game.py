@@ -298,6 +298,23 @@ class GameTurn(Base):
 
 class GameCommandRequest(Base):
     __tablename__ = "game_command_requests"
+    __table_args__ = (
+        UniqueConstraint(
+            "game_session_id",
+            "account_id",
+            "request_id",
+            name="uq_game_command_requests_identity"
+        ),
+        CheckConstraint(
+            "status IN ('Pending', 'Accepted', 'Rejected')",
+            name="ck_game_command_requests_status"
+        ),
+        CheckConstraint(
+            "(status = 'Pending' And decided_at IS NULL) OR "
+            "(status IN ('Accepted', 'Rejected') AND decided_at IS NOT NULL)",
+            name="ck_game_command_requests_decided_at"
+        )
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -316,31 +333,29 @@ class GameCommandRequest(Base):
     )
 
     request_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         nullable=False
     )
 
     command_type: Mapped[str] = mapped_column(
-        String(20),
+        String(64),
         nullable=False
     )
 
     status: Mapped[str] = mapped_column(
         String(20),
-        nullable=False
+        nullable=False,
+        default="Pending"
     )
 
     request_payload: Mapped[dict[str, Any]] = mapped_column(
         JSONB,
         nullable=False,
-        default=dict,
-        server_default=text("'{}'::jsonb")
     )
 
-    result_payload: Mapped[dict[str, Any]] = mapped_column(
+    result_payload: Mapped[dict[str, Any] | None] = mapped_column(
         JSONB,
-        nullable=False,
-        default=dict,
-        server_default=text("'{}'::jsonb")
+        nullable=True,
     )
 
     created_at: Mapped[datetime] = mapped_column(
@@ -349,7 +364,7 @@ class GameCommandRequest(Base):
         nullable=False
     )
 
-    ended_at: Mapped[datetime | None] = mapped_column(
+    decided_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True
     )
