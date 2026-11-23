@@ -264,6 +264,8 @@ def initial_peek(
         else:
             raise exceptions.InitialPeekCountExceedException()
         
+        game_session.state_revision += 1
+
         result = InitialPeekResult(
             position=position,
             value=game_card.value,
@@ -389,6 +391,7 @@ def complete_initial_peek(
                 game_session
             )
 
+        game_session.state_revision += 1
         session.commit()
 
         return result
@@ -432,6 +435,8 @@ def expire_initial_peek(
                 session,
                 game_session
             )
+
+            game_session.state_revision += 1
             result = InitialPeekTimeoutResult(status="Transitioned")
 
         session.commit()
@@ -602,7 +607,7 @@ def get_game_view(
                 else None
             ),
             server_time=datetime.now(timezone.utc),
-            schema_version=0
+            schema_version=game_session.state_revision
         )
 
         session.commit()

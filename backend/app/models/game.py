@@ -23,6 +23,10 @@ class GameSession(Base):
         CheckConstraint(
             "phase IN ('InitialPeek', 'PlayerTurn')",
             name="ck_game_sessions_phase"
+        ),
+        CheckConstraint(
+            "state_revision >= 0",
+            name="ck_game_sessions_state_revision_nonnegative"
         )
     )
 
@@ -66,6 +70,11 @@ class GameSession(Base):
     initial_peek_deadline_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True
+    )
+
+    state_revision: Mapped[int] = mapped_column(
+        default=0,
+        nullable=False,
     )
 
 class GamePlayer(Base):
