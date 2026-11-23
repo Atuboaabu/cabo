@@ -1,8 +1,9 @@
 import uuid
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy import ForeignKey, String, func, DateTime, CheckConstraint, Index, text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from datetime import datetime
+from typing import Any
 
 from app.database import Base
 
@@ -282,6 +283,64 @@ class GameTurn(Base):
     deadline_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False
+    )
+
+    ended_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
+
+class GameCommandRequest(Base):
+    __tablename__ = "game_command_requests"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    game_session_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("game_sessions.id"),
+        nullable=False
+    )
+
+    account_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("user_accounts.id"),
+        nullable=False
+    )
+
+    request_id: Mapped[uuid.UUID] = mapped_column(
+        nullable=False
+    )
+
+    command_type: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False
+    )
+
+    status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False
+    )
+
+    request_payload: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+        server_default=text("'{}'::jsonb")
+    )
+
+    result_payload: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+        server_default=text("'{}'::jsonb")
     )
 
     created_at: Mapped[datetime] = mapped_column(
