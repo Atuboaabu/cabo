@@ -83,3 +83,20 @@ class GameView(BaseModel):
     initial_peek_deadline_at: datetime | None
     server_time: datetime
     schema_version: int
+
+class InitialPeekCardView(BaseModel):
+    position: int = Field(ge=0, le=3)
+    value: int = Field(ge=0, le=13)
+
+class InitialPeekPrivateView(BaseModel):
+    game_session_id: UUID
+    account_id: UUID
+
+    revealed_cards: list[InitialPeekCardView] = Field(
+        max_length=2
+    )
+
+    remaining_peek_count: int = Field(ge=0, le=2)
+
+    deadline_at: datetime
+    server_time: datetime

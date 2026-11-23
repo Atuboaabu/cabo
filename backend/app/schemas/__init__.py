@@ -7,4 +7,5 @@ from .game import (GameStartResponse, InitialPeekResult,
                    InitialPeekCompleteResult, InitialPeekTimeoutResult,
                    FaceDownCardView, FaceUpCardView, CardView,
                    GamePlayerView, DrawPileView, DiscardPileView,
-                   ActiveTurnView, GameView)
+                   ActiveTurnView, GameView,
+                   InitialPeekCardView, InitialPeekPrivateView,)

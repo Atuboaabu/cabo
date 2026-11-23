@@ -12,7 +12,8 @@ from app.schemas import (GameStartResponse, InitialPeekResult,
                          InitialPeekCompleteResult, InitialPeekTimeoutResult,
                          GamePlayerView, GameView, FaceDownCardView,
                          DrawPileView, DiscardPileView,
-                         ActiveTurnView)
+                         ActiveTurnView, InitialPeekCardView,
+                         InitialPeekPrivateView)
 from app.database import engine
 from app.services import auth
 from app.game_logic import (build_cabo_deck, shuffle_deck, deal_initial_cards,
@@ -607,6 +608,74 @@ def get_game_view(
         session.commit()
 
         return game_view
+    except Exception:
+        session.rollback()
+        raise
+
+def get_initial_peek_view(
+    session: Session,
+    user_account: UserAccount,
+    game_session_id: UUID,
+)->InitialPeekPrivateView:
+    try:
+        game_session, game_player = _get_locked_game_context(
+            session,
+            user_account,
+            game_session_id
+        )
+
+        if (game_session.state != "Playing" or 
+            game_session.phase != "InitialPeek"):
+            raise exceptions.InvalidGameStateException()
+        
+        if game_player.initial_peek_completed:
+            raise exceptions.InitialPeekCompletedException()
+        
+        if game_session.initial_peek_deadline_at is None:
+            raise exceptions.InvalidGameStateException()
+        
+        confirmed_card_ids = [
+            card_id
+            for card_id in (
+                game_player.initial_peek_1st_card_id,
+                game_player.initial_peek_2nd_card_id
+            )
+            if card_id is not None
+        ]
+
+        confirmed_cards = session.execute(
+            select(GameCard).where(
+                GameCard.game_session_id == game_session_id,
+                GameCard.owner_game_player_id == game_player.id,
+                GameCard.location == "Hand",
+                GameCard.id.in_(confirmed_card_ids)
+            ).order_by(
+                GameCard.position
+            )
+        ).scalars().all()
+        if len(confirmed_cards) != len(confirmed_card_ids):
+            raise exceptions.InvalidGameStateException()
+        
+        now = datetime.now(timezone.utc)
+        if game_session.initial_peek_deadline_at <= now:
+            raise exceptions.InitialPeekExpiredException()
+        
+        result = InitialPeekPrivateView(
+            game_session_id=game_session.id,
+            account_id=user_account.id,
+            revealed_cards=[
+                InitialPeekCardView(
+                    position=game_card.position,
+                    value=game_card.value,
+                )
+                for game_card in confirmed_cards
+            ],
+            remaining_peek_count=2-len(confirmed_card_ids),
+            deadline_at=game_session.initial_peek_deadline_at,
+            server_time=now
+        )
+        session.commit()
+        return result
     except Exception:
         session.rollback()
         raise
