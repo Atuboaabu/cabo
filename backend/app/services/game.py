@@ -213,6 +213,66 @@ def _get_locked_game_context(
     
     return game_session, game_player
 
+def apply_initial_peek(
+    session: Session,
+    user_account: UserAccount,
+    game_session_id: UUID,
+    position: int
+)->InitialPeekResult:
+    game_session, game_player = _get_locked_game_context(
+        session,
+        user_account,
+        game_session_id
+    )
+    
+    if not (game_session.state == "Playing" 
+            and game_session.phase == "InitialPeek"
+        ):
+        raise exceptions.InvalidGameStateException()
+    
+    if game_player.initial_peek_completed:
+        raise exceptions.InitialPeekCompletedException()
+    
+    game_card = session.execute(
+        select(GameCard).where(
+            GameCard.game_session_id == game_session.id,
+            GameCard.owner_game_player_id == game_player.id,
+            GameCard.location == "Hand",
+            GameCard.position == position,
+        )
+    ).scalar_one_or_none()
+    if game_card is None:
+        raise exceptions.InvalidPeekTargetException(position)
+    
+    if (game_player.initial_peek_1st_card_id == game_card.id 
+        or game_player.initial_peek_2nd_card_id == game_card.id
+    ):
+        raise exceptions.RepeatedPeekException(position)
+
+    if not (game_session.initial_peek_deadline_at is not None
+        and game_session.initial_peek_deadline_at > datetime.now(timezone.utc)
+    ):
+        raise exceptions.InitialPeekExpiredException()
+
+    if game_player.initial_peek_1st_card_id is None:
+        game_player.initial_peek_1st_card_id = game_card.id
+        remaining_peek_count=1
+    elif game_player.initial_peek_2nd_card_id is None:
+        game_player.initial_peek_2nd_card_id = game_card.id
+        remaining_peek_count=0
+    else:
+        raise exceptions.InitialPeekCountExceedException()
+    
+    game_session.state_revision += 1
+
+    result = InitialPeekResult(
+        position=position,
+        value=game_card.value,
+        remaining_peek_count=remaining_peek_count,
+        deadline_at=game_session.initial_peek_deadline_at,
+    )
+    return result
+
 def initial_peek(
     session: Session,
     user_account: UserAccount,
@@ -220,57 +280,11 @@ def initial_peek(
     position: int
 )-> InitialPeekResult:
     try:
-        game_session, game_player = _get_locked_game_context(
+        result = apply_initial_peek(
             session,
             user_account,
-            game_session_id
-        )
-        
-        if not (game_session.state == "Playing" 
-                and game_session.phase == "InitialPeek"
-            ):
-            raise exceptions.InvalidGameStateException()
-        
-        if game_player.initial_peek_completed:
-            raise exceptions.InitialPeekCompletedException()
-        
-        game_card = session.execute(
-            select(GameCard).where(
-                GameCard.game_session_id == game_session.id,
-                GameCard.owner_game_player_id == game_player.id,
-                GameCard.location == "Hand",
-                GameCard.position == position,
-            )
-        ).scalar_one_or_none()
-        if game_card is None:
-            raise exceptions.InvalidPeekTargetException(position)
-        
-        if (game_player.initial_peek_1st_card_id == game_card.id 
-            or game_player.initial_peek_2nd_card_id == game_card.id
-        ):
-            raise exceptions.RepeatedPeekException(position)
-
-        if not (game_session.initial_peek_deadline_at is not None
-            and game_session.initial_peek_deadline_at > datetime.now(timezone.utc)
-        ):
-            raise exceptions.InitialPeekExpiredException()
-
-        if game_player.initial_peek_1st_card_id is None:
-            game_player.initial_peek_1st_card_id = game_card.id
-            remaining_peek_count=1
-        elif game_player.initial_peek_2nd_card_id is None:
-            game_player.initial_peek_2nd_card_id = game_card.id
-            remaining_peek_count=0
-        else:
-            raise exceptions.InitialPeekCountExceedException()
-        
-        game_session.state_revision += 1
-
-        result = InitialPeekResult(
-            position=position,
-            value=game_card.value,
-            remaining_peek_count=remaining_peek_count,
-            deadline_at=game_session.initial_peek_deadline_at,
+            game_session_id,
+            position
         )
 
         session.commit()
