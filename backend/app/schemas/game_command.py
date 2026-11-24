@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, ConfigDict
 
-class InitiaPeekCommandPayload(BaseModel):
+class InitialPeekCommandPayload(BaseModel):
     model_config = ConfigDict(
         strict=True,
         extra="forbid"
