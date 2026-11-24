@@ -1,4 +1,5 @@
 from uuid import UUID
+from dataclasses import dataclass
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
@@ -40,6 +41,11 @@ def is_same_command_request(
         existing_request.request_payload == normalized_payload
     )
 
+@dataclass(frozen=True)
+class CommandRequestLookup:
+    created: bool
+    request: GameCommandRequest
+
 def create_pending_command_request(
     session: Session,
     game_session_id: UUID,
@@ -47,8 +53,8 @@ def create_pending_command_request(
     request_id: UUID,
     command_type: str,
     normalized_payload: dict
-)->GameCommandRequest | None:
-    return session.execute(
+)->CommandRequestLookup:
+    created_result = session.execute(
         insert(GameCommandRequest).values(
             game_session_id=game_session_id,
             account_id=account_id,
@@ -56,7 +62,31 @@ def create_pending_command_request(
             command_type=command_type,
             status="Pending",
             request_payload=normalized_payload,
-        ).on_conflict_do_nothing().returning(
+        ).on_conflict_do_nothing(
+            constraint="uq_game_command_requests_identity"
+        ).returning(
             GameCommandRequest
         )
     ).scalar_one_or_none()
+
+    if created_result is not None:
+        return CommandRequestLookup(
+            created=True,
+            request=created_result
+        )
+    
+    existing_result = get_command_request(
+        session,
+        game_session_id,
+        account_id,
+        request_id
+    )
+    if existing_result is None:
+        raise RuntimeError(
+            "Conflicting command request could not be found"
+        )
+    
+    return CommandRequestLookup(
+        created=False,
+        request=existing_result
+    )
