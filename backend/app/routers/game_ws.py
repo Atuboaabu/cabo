@@ -5,7 +5,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.config import settings
 from app.services import game
-from app.websocket.manager import manager
+from app.websocket.manager import game_manager
 
 logger = getLogger(__name__)
 
@@ -66,7 +66,7 @@ async def room_websocket(
     )
 
     try:
-        await manager.connect(
+        await game_manager.connect(
             game_session_id,
             account_id,
             websocket
@@ -81,7 +81,7 @@ async def room_websocket(
             await websocket.close(code=1008)
             return
         
-        if not await manager.authorize(game_session_id, websocket):
+        if not await game_manager.authorize(game_session_id, websocket):
             await websocket.close(code=1008)
             return
     
@@ -92,7 +92,7 @@ async def room_websocket(
             "Websocket disconnected: game_session_id=%s", game_session_id
         )
     finally:
-        await manager.disconnect(
+        await game_manager.disconnect(
             game_session_id,
             websocket
         )

@@ -194,8 +194,6 @@ class RoomConnectionManager:
             return_exceptions=True
         )
 
-manager = RoomConnectionManager()
-
 @dataclass
 class GameConnection:
     account_id: UUID
@@ -382,4 +380,6 @@ class GameConnectionManager:
             return_exceptions=True
         )
 
+room_manager = RoomConnectionManager()
+game_manager = GameConnectionManager()
     
