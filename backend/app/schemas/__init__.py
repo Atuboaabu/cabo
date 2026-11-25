@@ -9,4 +9,5 @@ from .game import (GameStartResponse, InitialPeekResult,
                    GamePlayerView, DrawPileView, DiscardPileView,
                    ActiveTurnView, GameView,
                    InitialPeekCardView, InitialPeekPrivateView,)
-from .game_command import InitialPeekCommandPayload, InitialPeekCommandOutcome
+from .game_command import (InitialPeekCommandPayload, InitialPeekCommandOutcome,
+                           InitialPeekCommandRequest)

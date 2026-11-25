@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Literal
+from uuid import UUID
 
 from app.schemas.game import InitialPeekResult
 
@@ -22,3 +23,12 @@ class InitialPeekCommandOutcome(BaseModel):
     replayed: bool
     reason: str | None = None
     peek_result: InitialPeekResult | None = None
+
+class InitialPeekCommandRequest(BaseModel):
+    model_config = ConfigDict(
+        strict=True,
+        extra="forbid"
+    )
+
+    request_id: UUID
+    position: int = Field(ge=0, le=3)
