@@ -305,3 +305,40 @@ When a GET returns **Playing**, keep the existing Room ID, server-confirmed memb
 7. Independently verify invalid Start attempts (non-Host, missing Ready, wrong Room state, concurrent request) cannot change the UI optimistically. HTTP 401/403/404 follow existing access rules.
 
 These steps are **not confirmed as real-browser E2E** until executed against a configured test deployment. Do not inspect or record HttpOnly Cookie values.
+
+## Phase 7 · Real Game / InitialPeek / PlayerTurn integration
+
+This frontend branch uses **only** the actual FastAPI Game Router and Pydantic Schemas from `main` commit `87e41d79d33fde162a346ab6b006fd543a9cae51`. It does not modify backend, rules, contracts, migrations or MockGateway. The current backend uses **`phase: "InitialPeek"`**, not the legacy documentation spelling `InitialReveal`.
+
+### Real navigation and verified Game identity
+- Host Start: `POST /rooms/{id}/start` returns 201 `GameStartResponse.id`, the **GameSession ID**, distinct from the Room UUID. The Game ID is retained as a *navigation locator only* in this browser's sessionStorage. The existing Room controller obtains the authoritative Playing Room View; the real Game controller separately GETs `/games/{gameId}`, validates GameView schema v1, the authenticated viewer account and originating Room ID, connects `/ws/games/{gameId}`, and opens the independent real Game page. It never creates a Mock session.
+- Non-Host: **confirmed backend contract gap**. `GET /rooms/{id}` exposes no GameSession ID and `room.changed` contains only Room identity. The non-Host cannot infer the Game ID from Playing alone. The real Room Playing card therefore offers an **explicit GameSession ID input**, to be obtained from the Host via an existing trusted channel. The input is never interpreted as authorization; the server-side `GET /games/{id}` must pass and match Room and account before Game UI is shown. This is a *manual test workaround*, not the required automatic Room→Game discovery path.
+- Minimal backend change needed **by the backend owner**, not implemented here: a member-authenticated Room→current GameSession ID lookup/projection, e.g. expose the current Game ID to valid, frozen participants when Room becomes Playing. Do not expose other Games or secret cards. Until available, **fully automatic 2–4-player navigation remains blocked**.
+- On refresh, only `cabo.lastRealGameId` (Game UUID) and an optional pending Command's metadata (game/account UUID, request UUID, type and selected position) are stored per browser tab. Never store public GameView or private card numbers as durable state. Recovery always calls the server again to confirm identity.
+
+### Real Game transport and API
+- `src/game-api.js`: Cookie-authenticated no-cache `GET /games/{id}`, `GET /games/{id}/initial-peek-view`, `POST /games/{id}/commands/initial-peek`, and `POST /games/{id}/commands/complete-initial-peek` with strict v1 schema checking. No raw secret value or session token is logged.
+- `src/game-ws.js`: direct FastAPI `/ws/games/{gameId}`, choosing WS/WSS based on configured API origin and page security. Only matching JSON `game.changed` causes GET GameView. The WS message is **never** used as state or to submit a Command.
+- `src/real-game-state.js`: maintains one Game locator, one validated authoritative GameView, monotonic `state_revision` (older revisions cannot overwrite newer), one Game socket and bounded network retries. Reconnect performs GET before creating a new WS, and WS OPEN performs GET again. Close, logout, account switch, Mock entry and pagehide remove old WS/timers. Focus/visibility resumes by reauthorizing. Frontend displays errors or stops interaction for invalid schema and terminal Game state; it does not fabricate state.
+
+### Secret InitialPeek lifecycle
+- `phase==="InitialPeek"` is the only stage for selecting one's own 0–3 positions, with at most two unique choices. A new action generates a new UUID; network uncertainty and `NotYetDetermined` retain the **same request_id**, allow only retry of that identity, and block a new action until reconciled. `Accepted` can include `peek_result:null` on historical replay; the frontend **never fabricates a card value**.
+- Private card numbers are held only in a memory object distinct from public GameView, and only displayed to the authenticated card owner inside the original shared 45-second window. The server's GameView `server_time` and `initial_peek_deadline_at` establish a conservative client deadline (using request start so network latency cannot extend it). PrivateView must match original Game, account, confirmed positions, shared deadline and server time. Numbers are scrubbed when the deadline expires, after accepted personal End, after a phase change, authorization loss, a Game/WS disconnect, tab hiding, logout or leaving the real Game screen. No sessionStorage/localStorage contains private values.
+- End is **always initiated by the user**, including after two peeks. Accepted End immediately clears secrets and GETs GameView. Its `complete_result.all_players_completed` is an outcome at the moment of acceptance, not the ongoing phase; only fresh GameView can move the UI to `PlayerTurn`.
+- The independent Timeout Worker has no cross-process WS notification. At the shared deadline the UI clears secrets immediately, asks for a fresh GameView and makes at most **six** further modestly spaced checks while the server still reports InitialPeek. It stops on PlayerTurn; no fake phase transition or endless high-frequency polling.
+
+### PlayerTurn scope
+Shows server-projected players, seat order, public/face-down cards, turn number, acting player, deadline, draw pile count and public discard top. It does **not** implement Draw/Replace/Discard, special abilities, CABO or other unimplemented backend Commands.
+
+### Local development and manual two-profile checks
+`npm run dev` explicitly proxies Start and the four Game HTTP endpoints in addition to Auth/Room HTTP. Game WebSocket is a **direct** connection to FastAPI, using the existing `CABO_ROOM_WS_BASE_URL` to honor host-only browser Session cookies. Ensure FastAPI `allowed_origins` includes the frontend's actual Origin. The proxy does not support WS Upgrade.
+
+1. Login Alice and Bob in independent browser profiles, join a real Room, Ready Bob and Start as Alice. Check POST /rooms/{room}/start 201, GameSession ID distinct from Room ID, GET /games/{gameId} 200, and Game WebSocket 101/OPEN.
+2. For Bob, Room Playing alone cannot supply Game ID. Obtain the legitimate ID from Alice's Game screen through a trusted channel, enter it in Bob's Room Playing form and ensure GET GameView authenticates Bob's participant account. An unrelated account must not pass.
+3. Check both views have four **face-down** initial cards per participant, correct server revision and shared deadline. Select at most two distinct own positions. Each accepted result may reveal only the authorized owner's private value. Ensure other browser and public GameView never display it.
+4. Retry an uncertain Command with the **same request_id** and verify no double-use of a peek. Confirm after two peeks an End button remains available, and deliberate End clears all private numbers immediately.
+5. If others have not Ended, show waiting. When all finish or the shared deadline passes, verify a fresh GameView reports **PlayerTurn** and shows the actual acting player, turn number and deadline.
+6. Simulate Game WebSocket close, focus return, page reload, private API 403, 409 phase changes, schema mismatch and worker timeout delay. Check revision monotonicity, no stale private digits, bounded deadline resync, and no automatic Mock interactions.
+7. Verify Room Ready/Kick/Leave/Disband, login/logout and the independent Mock demo remain unchanged. Do not copy or log Cookie/session values.
+
+These are manual acceptance steps. **No real two-account browser+FastAPI+PostgreSQL test has been run by the assistant.** The absence of automatic guest GameSession ID discovery is a real, unresolved backend interface blocker.
