@@ -25,10 +25,5 @@ class InitialPeekCommandOutcome(BaseModel):
     peek_result: InitialPeekResult | None = None
 
 class InitialPeekCommandRequest(BaseModel):
-    model_config = ConfigDict(
-        strict=True,
-        extra="forbid"
-    )
-
     request_id: UUID
     position: int = Field(ge=0, le=3)

@@ -200,7 +200,11 @@ def execute_initial_peek_command(
         return InitialPeekCommandOutcome(
             status="Accepted",
             replayed=False,
-            peek_result=peek_result,
+            peek_result=(
+                peek_result
+                if peek_result.deadline_at > datetime.now(timezone.utc)
+                else None
+            ),
         )
 
     except Exception:
