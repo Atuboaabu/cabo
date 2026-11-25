@@ -6,7 +6,7 @@ from sqlalchemy.dialects.postgresql import insert
 from datetime import datetime, timezone
 
 from app.models import GameCommandRequest, UserAccount, GamePlayer
-from app.schemas import (InitialPeekCommandPayload, InitialPeekResult,
+from app.schemas import (InitialPeekCommandPayload, InitialPeekResult, InitialPeekCompleteResult,
                          InitialPeekCommandOutcome, InitialPeekCompleteCommandOutcome)
 from app.services import game_context, game
 from app.exc import exceptions
@@ -272,7 +272,14 @@ def execute_complete_initial_peek_command(
                     replayed=True,
                     reason=(
                         request.result_payload or {}
-                    ).get("reason")
+                    ).get("reason"),
+                    complete_result=(
+                        InitialPeekCompleteResult.model_validate(
+                            request.result_payload
+                        )
+                        if request.status == "Accepted"
+                        else None
+                    )
                 )
 
             session.commit()

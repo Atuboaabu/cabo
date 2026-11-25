@@ -70,7 +70,7 @@ def get_initial_peek_view(
     response_model=InitialPeekCompleteCommandOutcome,
     dependencies=[OriginCheckDep]
 )
-def initial_peek_command(
+def complete_initial_peek_command(
     session: SessionDep,
     user: ActiveUserDep,
     game_session_id: UUID,
