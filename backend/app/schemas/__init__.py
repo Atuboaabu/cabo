@@ -10,4 +10,5 @@ from .game import (GameStartResponse, InitialPeekResult,
                    ActiveTurnView, GameView,
                    InitialPeekCardView, InitialPeekPrivateView,)
 from .game_command import (InitialPeekCommandPayload, InitialPeekCommandOutcome,
-                           InitialPeekCommandRequest)
+                           InitialPeekCommandRequest, InitialPeekCompleteCommandOutcome,
+                           InitialPeekCompleteCommandRequest)

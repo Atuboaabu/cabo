@@ -2,7 +2,8 @@ from fastapi import APIRouter, status
 from uuid import UUID
 
 from app.schemas import (InitialPeekCommandOutcome, InitialPeekCommandRequest,
-                         GameView, InitialPeekPrivateView)
+                         GameView, InitialPeekPrivateView, InitialPeekCompleteCommandOutcome,
+                         InitialPeekCompleteCommandRequest)
 from app.depencicies import OriginCheckDep, SessionDep, ActiveUserDep
 from app.services import game_command, game
 
@@ -61,4 +62,23 @@ def get_initial_peek_view(
         session,
         user,
         game_session_id
+    )
+
+@router.post(
+    "/{game_session_id}/commands/complete-initial-peek",
+    status_code=status.HTTP_200_OK,
+    response_model=InitialPeekCompleteCommandOutcome,
+    dependencies=[OriginCheckDep]
+)
+def initial_peek_command(
+    session: SessionDep,
+    user: ActiveUserDep,
+    game_session_id: UUID,
+    body: InitialPeekCompleteCommandRequest
+):
+    return game_command.execute_complete_initial_peek_command(
+        session,
+        user,
+        game_session_id,
+        body.request_id
     )

@@ -6,7 +6,8 @@ from sqlalchemy.dialects.postgresql import insert
 from datetime import datetime, timezone
 
 from app.models import GameCommandRequest, UserAccount, GamePlayer
-from app.schemas import InitialPeekCommandPayload, InitialPeekResult, InitialPeekCommandOutcome
+from app.schemas import (InitialPeekCommandPayload, InitialPeekResult,
+                         InitialPeekCommandOutcome, InitialPeekCompleteCommandOutcome)
 from app.services import game_context, game
 from app.exc import exceptions
 
@@ -18,6 +19,8 @@ def normalize_command_payload(
         return InitialPeekCommandPayload.model_validate(
             payload
         ).model_dump()
+    elif command_type == "CompleteInitialPeek":
+        return {}
     raise ValueError("Unsupported command type")
 
 def get_command_request(
@@ -205,6 +208,105 @@ def execute_initial_peek_command(
                 if peek_result.deadline_at > datetime.now(timezone.utc)
                 else None
             ),
+        )
+
+    except Exception:
+        session.rollback()
+        raise
+
+def execute_complete_initial_peek_command(
+    session: Session,
+    user_account: UserAccount,
+    game_session_id: UUID,
+    request_id: UUID
+)->InitialPeekCompleteCommandOutcome:
+    try:
+        payload = normalize_command_payload(
+            "CompleteInitialPeek",
+            {}
+        )
+        game_session = game_context.get_locked_game_session(
+            session,
+            game_session_id
+        )
+
+        game_player = session.execute(
+            select(GamePlayer).where(
+                GamePlayer.game_session_id == game_session_id,
+                GamePlayer.account_id == user_account.id
+            )
+        ).scalar_one_or_none()
+
+        if game_session is None or game_player is None:
+            raise exceptions.GameNotAccessibleException()
+    
+        lookup = create_pending_command_request(
+            session,
+            game_session_id,
+            user_account.id,
+            request_id,
+            "CompleteInitialPeek",
+            payload
+        )
+
+        request = lookup.request
+
+        if not lookup.created:
+            if not is_same_command_request(
+                request,
+                "CompleteInitialPeek",
+                payload
+            ):
+                outcome = InitialPeekCompleteCommandOutcome(
+                    status="IdentityConflict",
+                    replayed=True
+                )
+            elif request.status == "Pending":
+                outcome = InitialPeekCompleteCommandOutcome(
+                    status="NotYetDetermined",
+                    replayed=True
+                )
+            else:
+                outcome = InitialPeekCompleteCommandOutcome(
+                    status=request.status,
+                    replayed=True,
+                    reason=(
+                        request.result_payload or {}
+                    ).get("reason")
+                )
+
+            session.commit()
+            return outcome
+        try:
+            complete_result = game.apply_complete_initial_peek(
+                session,
+                user_account,
+                game_session_id
+            )
+        except tuple(BUSINESS_REJECTIONS) as exc:
+            reason = BUSINESS_REJECTIONS[type(exc)]
+            request.status = "Rejected"
+            request.decided_at = datetime.now(timezone.utc)
+            request.result_payload = {"reason": reason}
+
+            session.commit()
+            return InitialPeekCompleteCommandOutcome(
+                status="Rejected",
+                replayed=False,
+                reason=reason
+            )
+
+        request.status = "Accepted"
+        request.decided_at = datetime.now(timezone.utc)
+        request.result_payload = {
+            "all_players_completed": complete_result.all_players_completed,
+        }
+        session.commit()
+
+        return InitialPeekCompleteCommandOutcome(
+            status="Accepted",
+            replayed=False,
+            complete_result=complete_result
         )
 
     except Exception:
