@@ -22,7 +22,7 @@ export function createRealGameState({
 }={}){
  const state={
   gameId:null,view:null,privateCards:{},privateRemaining:null,
-  pending:null,pendingCommand:null,error:'',outcomeUnknown:false,privateEnded:false,
+  pending:null,pendingCommand:null,error:'',outcomeUnknown:false,privateEnded:false,terminal:false,
   deadlineMs:null,wsConnected:false,refreshNeeded:false
  };
  let generation=0,paused=false,syncPromise=null,queuedSync=false,deadlineTimer=null,
@@ -68,7 +68,7 @@ export function createRealGameState({
   stopTimers();socket?.close();reconnectAttempts=0;
   clearPrivate();state.gameId=null;state.view=null;state.pending=null;
   state.pendingCommand=null;state.error='';state.outcomeUnknown=false;
-  state.deadlineMs=null;state.wsConnected=false;state.refreshNeeded=false;state.privateEnded=false;
+  state.deadlineMs=null;state.wsConnected=false;state.refreshNeeded=false;state.privateEnded=false;state.terminal=false;
   if(clearLocator){safeSet(storage,KEY,null);safeSet(storage,COMMAND_KEY,null);}
   emit();
  }
@@ -87,7 +87,7 @@ export function createRealGameState({
   void sync({silent:true});
  }
  function queueReconnect(){
-  if(paused||!state.gameId||!state.view||reconnectTimer!==null||handshakeTimer!==null)return;
+  if(paused||state.terminal||!state.gameId||!state.view||reconnectTimer!==null||handshakeTimer!==null)return;
   const attempt=reconnectAttempts++;
   const delay=Math.min(30000,Math.round(Math.min(30000,1000*2**Math.min(attempt,5))*
     (0.85+0.15*wait(random(),0,1))));
@@ -97,7 +97,7 @@ export function createRealGameState({
    if(token!==generation||paused||id!==state.gameId)return;
    const verified=await sync({silent:true});
    if(!verified||token!==generation||paused||id!==state.gameId){
-    if(state.view&&id===state.gameId&&!paused)queueReconnect();
+    if(state.view&&id===state.gameId&&!paused&&!state.terminal)queueReconnect();
     return;
    }
    try{
@@ -215,7 +215,7 @@ export function createRealGameState({
     if(state.view&&g.state_revision<state.view.state_revision)return true;
     const old=state.view;
     const changed=!old||JSON.stringify(old)!==JSON.stringify(g);
-    state.view=g;state.error='';state.refreshNeeded=false;
+    state.view=g;state.error='';state.refreshNeeded=false;state.terminal=false;
     safeSet(storage,KEY,id);
     if(changed){
      if(g.phase!=='InitialPeek')state.privateEnded=true;
@@ -234,7 +234,7 @@ export function createRealGameState({
     clearPrivate();
     if([401,403,404].includes(error?.status)){revoke(error);return false;}
     if(error?.code==='INVALID_GAME_STATE'||error?.code==='GAME_ENDED'){
-     state.privateEnded=true;stopTimers();socket?.close();state.wsConnected=false;
+     state.privateEnded=true;state.terminal=true;stopTimers();socket?.close();state.wsConnected=false;
     }
     state.error=error?.message||'暂时无法同步游戏。';
     state.refreshNeeded=true;emit();return false;
@@ -283,7 +283,7 @@ export function createRealGameState({
   return ok;
  }
  function validPeekPosition(position){
-  return isInitial()&&remainingMs()>0&&!state.privateEnded&&!state.refreshNeeded&&!own()?.initial_peek_completed&&
+  return isInitial()&&remainingMs()>0&&!state.terminal&&!state.privateEnded&&!state.refreshNeeded&&!own()?.initial_peek_completed&&
    state.pending===null&&!state.pendingCommand&&
    Number.isInteger(position)&&position>=0&&position<=3&&
    own().hand_cards.some(c=>c.position===position)&&
@@ -291,7 +291,7 @@ export function createRealGameState({
    own().initial_peek_confirmed_positions.length<2;
  }
  function canComplete(){
-  return isInitial()&&remainingMs()>0&&!state.privateEnded&&!state.refreshNeeded&&!own()?.initial_peek_completed&&
+  return isInitial()&&remainingMs()>0&&!state.terminal&&!state.privateEnded&&!state.refreshNeeded&&!own()?.initial_peek_completed&&
    !state.pending&&!state.pendingCommand;
  }
  async function command(type,position=null,{retry=false}={}){
