@@ -1,7 +1,7 @@
 from uuid import UUID
 from logging import getLogger
 
-from app.websocket.manager import game_manager
+from app.websocket.manager import room_manager
 
 logger = getLogger(__name__)
 
@@ -9,7 +9,7 @@ async def notification_room_changed(
     room_id: UUID
 )->None:
     try:
-        await game_manager.broadcast(
+        await room_manager.broadcast(
             room_id,
             {
                 "type": "room.changed",
