@@ -328,7 +328,16 @@ export function createRealGameState({
    state.outcomeUnknown=false;
    if(outcome.status==='Rejected'){
     state.error=message[outcome.reason]||'服务器拒绝了该命令，请同步最新 GameView。';
-    if(['INITIAL_PEEK_EXPIRED','INITIAL_PEEK_COMPLETED','INVALID_GAME_STATE','GAME_ENDED'].includes(outcome.reason))clearPrivate();
+    if(['INITIAL_PEEK_EXPIRED','INITIAL_PEEK_COMPLETED','INVALID_GAME_STATE','GAME_ENDED'].includes(outcome.reason)){
+     state.privateEnded=true;clearPrivate();
+     if(outcome.reason==='INITIAL_PEEK_EXPIRED'){
+      state.deadlineMs=Math.min(state.deadlineMs??now(),now());
+      scheduleCompensation();
+     }
+     if(outcome.reason==='GAME_ENDED'){
+      state.terminal=true;stopTimers();socket?.close();
+     }
+    }
    }else if(outcome.status==='Accepted'){
     if(type==='complete'){state.privateEnded=true;clearPrivate();}
     else if(outcome.peek_result&&isInitial()&&!state.privateEnded&&!own()?.initial_peek_completed&&remainingMs()>0&&
