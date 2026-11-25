@@ -12,7 +12,7 @@ const trace=(event,roomId,extra={})=>{
 };
 
 
-export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthorized=()=>{},getAccountId=()=>null,createSocket=null,setTimeoutFn=globalThis.setTimeout,clearTimeoutFn=globalThis.clearTimeout,random=Math.random}={}) {
+export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthorized=()=>{},getAccountId=()=>null,createSocket=null,onStartAccepted=()=>{},onPlaying=()=>{},setTimeoutFn=globalThis.setTimeout,clearTimeoutFn=globalThis.clearTimeout,random=Math.random}={}) {
   const state={
     roomId:null,view:null,pending:null,error:'',outcomeUnknown:false,
     joinCode:'',stale:false,quietRead:false
@@ -140,6 +140,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
       // is no longer valid; do not let any recovery timer reopen it.
       queuedRoomChange=false;queuedCloseVerification=false;
       cancelRecovery();socket?.close();
+      if(room.state==='Playing')onPlaying(room);
       return;
     }
     openRoomSocket(room.id);
@@ -366,7 +367,11 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
       else if(action==='leave')await api.leaveRoom(id);
       else if(action==='kick')await api.kickMember(id,target);
       else if(action==='disband')await api.disbandRoom(id);
-      else if(action==='start')await api.startGame(id);
+      else if(action==='start'){
+        const started=await api.startGame(id);
+        if(token===generation&&started.room_id.toLowerCase()===id.toLowerCase())
+          onStartAccepted(started.id,id);
+      }
       if(token!==generation)return false;
       if(action==='leave'||action==='disband'){
         // Only a confirmed 204 clears the Room locator; Session stays intact.
