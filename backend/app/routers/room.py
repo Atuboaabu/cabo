@@ -7,7 +7,7 @@ from app.schemas import (RoomResponse, RoomJoinRequest, RoomReadyResponse, RoomR
 
 from app.depencicies import SessionDep, ActiveUserDep, OriginCheckDep
 from app.services import room, game
-from app.websocket.manager import manager
+from app.websocket.manager import game_manager
 from app.websocket.notification import notification_room_changed
 from app.exc import exceptions
 
@@ -109,14 +109,14 @@ async def room_member_leave(
     )
 
     if not host_leave:
-        await manager.account_disconnect(
+        await game_manager.account_disconnect(
             room_id,
             account_id
         )
 
         await notification_room_changed(room_id)
     else:
-        await manager.room_disconnect(
+        await game_manager.room_disconnect(
             room_id
         )
 
@@ -141,7 +141,7 @@ async def kick_room_member(
         target_account_id
     )
 
-    await manager.account_disconnect(
+    await game_manager.account_disconnect(
         room_id,
         target_account_id
     )
@@ -167,7 +167,7 @@ async def disband_room(
         room_id
     )
 
-    await manager.room_disconnect(
+    await game_manager.room_disconnect(
         room_id
     )
 
@@ -209,6 +209,6 @@ async def start_game(
 
     await notification_room_changed(room_id)
 
-    await manager.room_disconnect(room_id)
+    await game_manager.room_disconnect(room_id)
 
     return response
