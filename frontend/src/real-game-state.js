@@ -79,6 +79,11 @@ export function createRealGameState({
  function resume(){
   if(!state.gameId)return;
   paused=false;
+  onReturn();
+ }
+ function onReturn(){
+  if(!state.gameId||paused)return;
+  if(isInitial()&&remainingMs()<=0)expirePrivate();
   void sync({silent:true});
  }
  function queueReconnect(){
@@ -157,12 +162,13 @@ export function createRealGameState({
  }
  async function readPrivate(){
   const id=state.gameId,token=generation,epoch=privateEpoch;
-  const view=state.view;
+  const view=state.view,revision=view?.state_revision;
   if(paused||!isInitial()||!own()||state.privateEnded||own().initial_peek_completed||remainingMs()<=0)return false;
   try{
    const p=await api.getInitialPeekView(id);
    if(token!==generation||epoch!==privateEpoch||id!==state.gameId||
-      state.view?.phase!=='InitialPeek'||state.privateEnded||own()?.initial_peek_completed||remainingMs()<=0)return false;
+      state.view?.phase!=='InitialPeek'||state.view?.state_revision!==revision||
+      state.privateEnded||own()?.initial_peek_completed||remainingMs()<=0)return false;
    if(p.game_session_id!==id||p.account_id!==getAccountId()||
       Date.parse(p.deadline_at)!==Date.parse(view.initial_peek_deadline_at)||
       Date.parse(p.server_time)>=Date.parse(p.deadline_at)){
@@ -176,9 +182,12 @@ export function createRealGameState({
    state.privateRemaining=p.remaining_peek_count;emit();return true;
   }catch(error){
    if(token!==generation||id!==state.gameId)return false;
-   if([401,403,404].includes(error?.status)){clearPrivate();if(error.status===401)revoke(error);}
+   if([401,403,404].includes(error?.status)){
+    clearPrivate();state.privateEnded=true;
+    if(error.status===401)revoke(error);
+   }
    else if(error?.status===409||error?.status===422||error?.code==='INVALID_GAME_STATE'){
-    clearPrivate();
+    clearPrivate();state.privateEnded=true;
    }
    emit();return false;
   }
@@ -319,7 +328,7 @@ export function createRealGameState({
     if(['INITIAL_PEEK_EXPIRED','INITIAL_PEEK_COMPLETED','INVALID_GAME_STATE','GAME_ENDED'].includes(outcome.reason))clearPrivate();
    }else if(outcome.status==='Accepted'){
     if(type==='complete'){state.privateEnded=true;clearPrivate();}
-    else if(outcome.peek_result&&isInitial()&&remainingMs()>0&&
+    else if(outcome.peek_result&&isInitial()&&!state.privateEnded&&!own()?.initial_peek_completed&&remainingMs()>0&&
        Date.parse(outcome.peek_result.deadline_at)===Date.parse(state.view.initial_peek_deadline_at)&&
        outcome.peek_result.position===meta.position){
       state.privateCards={...state.privateCards,[meta.position]:outcome.peek_result.value};
@@ -350,7 +359,7 @@ export function createRealGameState({
   }
  }
  return {
-  state,reset,pause,resume,enter,restore,remember,sync,readPrivate,
+  state,reset,pause,resume,onReturn,enter,restore,remember,sync,readPrivate,
   peek:position=>command('peek',position),
   complete:()=>command('complete'),
   retryPending:()=>state.pendingCommand?command(state.pendingCommand.type,null,{retry:true}):Promise.resolve(false),
