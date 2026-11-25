@@ -585,7 +585,7 @@ function recheckRoomOnFocus(){
   if(realAuthState==='authenticated'&&screen==='real-account'&&!realBusy)
    realRooms.verifyOnReturn();
   if(realAuthState==='authenticated'&&screen==='real-game'&&!realBusy)
-   void realGames.sync({silent:true});
+   realGames.onReturn();
  });
 }
 window.addEventListener('focus',recheckRoomOnFocus);
