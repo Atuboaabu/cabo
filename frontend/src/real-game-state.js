@@ -264,23 +264,23 @@ export function createRealGameState({
   state.gameId=id;
   emit();
   const ok=await sync({expectedRoomId:roomId});
-  if(!ok)state.error=state.error||'无法验证 GameSession 访问资格。';
+  if(ok){
+   // The UUID is a navigation locator, not proof. Reuse an unknown Command
+   // only after the current account and Game have been reauthorized by GET.
+   const pending=safeGet(storage,COMMAND_KEY);
+   if(pending){
+    let meta;try{meta=JSON.parse(pending);}catch{}
+    if(safeCommand(meta)&&meta.gameId===id&&meta.accountId===getAccountId()){
+     state.pendingCommand=meta;state.outcomeUnknown=true;
+    }else safeSet(storage,COMMAND_KEY,null);
+   }
+  }else state.error=state.error||'无法验证 GameSession 访问资格。';
   emit();return ok;
  }
  async function restore({roomId=null}={}){
   const id=safeGet(storage,KEY);
   if(!validId(id)){safeSet(storage,KEY,null);return false;}
-  const ok=await enter(id,{roomId});
-  if(ok){
-   const pending=safeGet(storage,COMMAND_KEY);
-   if(pending){
-    let meta;try{meta=JSON.parse(pending);}catch{}
-    if(safeCommand(meta)&&meta.gameId===id&&meta.accountId===getAccountId()){
-     state.pendingCommand=meta;state.outcomeUnknown=true;emit();
-    }else safeSet(storage,COMMAND_KEY,null);
-   }
-  }
-  return ok;
+  return enter(id,{roomId});
  }
  function validPeekPosition(position){
   return isInitial()&&remainingMs()>0&&!state.terminal&&!state.privateEnded&&!state.refreshNeeded&&!own()?.initial_peek_completed&&
