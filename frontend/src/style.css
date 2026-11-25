@@ -154,3 +154,19 @@
  .real-room-card .member-meta{width:100%;justify-content:flex-start}
  .real-room-card .member-meta button{margin-left:auto}
 }
+
+/* Real Game is a separate server-authoritative view, never the Mock table. */
+.real-game-page{max-width:1180px;margin:auto}
+.real-game-page .section-heading h1{font-size:clamp(26px,3.4vw,42px)}
+.real-game-page code,.real-room-area code{overflow-wrap:anywhere;font:12px system-ui,sans-serif}
+.real-game-players{display:grid;grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:18px;margin:22px 0}
+.real-game-players .paper-card{padding:22px;min-width:0}
+.real-game-cards{display:flex;flex-wrap:wrap;gap:9px;margin:14px 0}
+.real-game-card{display:grid;place-items:center;min-width:75px;min-height:105px;border:2px solid #b08b51;border-radius:12px;background:#244f39;color:#f7e9d0;font:bold 13px system-ui,sans-serif;padding:8px;text-align:center;box-shadow:0 4px 12px #1d352c33}
+button.real-game-card{border-color:#e6c780;cursor:pointer}
+button.real-game-card:hover:not(:disabled){filter:brightness(1.15);transform:translateY(-2px)}
+.real-game-card:not(button){cursor:default}
+.real-game-page .data-line{align-items:flex-start}
+.real-game-page .data-line strong,.real-game-page .data-line code{text-align:right;max-width:70%}
+#real-game-join-form{display:grid;gap:10px;margin-top:18px;max-width:600px}
+#real-game-join-form label{display:grid;gap:8px}
