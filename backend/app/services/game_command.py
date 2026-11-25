@@ -8,8 +8,9 @@ from datetime import datetime, timezone
 from app.models import GameCommandRequest, UserAccount, GamePlayer
 from app.schemas import (InitialPeekCommandPayload, InitialPeekResult, InitialPeekCompleteResult,
                          InitialPeekCommandOutcome, InitialPeekCompleteCommandOutcome)
-from app.services import game_context, game
+from app.services import game_context, game, auth
 from app.exc import exceptions
+from app.database import engine
 
 def normalize_command_payload(
     command_type: str,
@@ -107,7 +108,7 @@ BUSINESS_REJECTIONS = {
     exceptions.InitialPeekCountExceedException: "PEEK_LIMIT_EXCEEDED",
 }
 
-def execute_initial_peek_command(
+def initial_peek_command(
     session: Session,
     game_session_id: UUID,
     user_account: UserAccount,
@@ -214,7 +215,27 @@ def execute_initial_peek_command(
         session.rollback()
         raise
 
-def execute_complete_initial_peek_command(
+def execute_initial_peek_command(
+    token: str,
+    game_session_id: UUID,
+    request_id: UUID,
+    position: int
+)->InitialPeekCommandOutcome:
+    with Session(engine) as session:
+        user = auth.get_authenticated_account(
+            session,
+            token
+        )
+
+        return initial_peek_command(
+            session,
+            game_session_id,
+            user,
+            request_id,
+            position
+        )
+
+def complete_initial_peek_command(
     session: Session,
     user_account: UserAccount,
     game_session_id: UUID,
@@ -319,3 +340,21 @@ def execute_complete_initial_peek_command(
     except Exception:
         session.rollback()
         raise
+
+def execute_complete_initial_peek_command(
+    token: str,
+    game_session_id: UUID,
+    request_id: UUID,
+)->InitialPeekCompleteCommandOutcome:
+    with Session(engine) as session:
+        user = auth.get_authenticated_account(
+            session,
+            token
+        )
+
+        return complete_initial_peek_command(
+            session,
+            user,
+            game_session_id,
+            request_id
+        )

@@ -21,3 +21,20 @@ async def notification_room_changed(
             "Room notification changed failed: room id = %s",
             room_id
         )
+    
+async def notification_game_changed(
+    game_session_id: UUID
+)->None:
+    try:
+        await room_manager.broadcast(
+            game_session_id,
+            {
+                "type": "game.changed",
+                "game_session_id": str(game_session_id)
+            }
+        )
+    except Exception:
+        logger.exception(
+            "Game notification changed failed: game session id = %s",
+            game_session_id
+        )

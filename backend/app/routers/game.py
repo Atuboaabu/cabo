@@ -1,11 +1,14 @@
-from fastapi import APIRouter, status
+from fastapi import APIRouter, status, Request
 from uuid import UUID
+from starlette.concurrency import run_in_threadpool
 
 from app.schemas import (InitialPeekCommandOutcome, InitialPeekCommandRequest,
                          GameView, InitialPeekPrivateView, InitialPeekCompleteCommandOutcome,
                          InitialPeekCompleteCommandRequest)
 from app.depencicies import OriginCheckDep, SessionDep, ActiveUserDep
 from app.services import game_command, game
+from app.websocket.notification import notification_game_changed
+from app.exc import exceptions
 
 router = APIRouter(
     prefix="/games",
@@ -18,19 +21,27 @@ router = APIRouter(
     response_model=InitialPeekCommandOutcome,
     dependencies=[OriginCheckDep]
 )
-def initial_peek_command(
-    session: SessionDep,
-    user: ActiveUserDep,
+async def initial_peek_command(
+    request: Request,
     game_session_id: UUID,
     body: InitialPeekCommandRequest
 ):
-    return game_command.execute_initial_peek_command(
-        session,
+    token = request.cookies.get("session_token")
+    if not token:
+        raise exceptions.InvalidCookieException()
+
+    outcome = await run_in_threadpool(
+        game_command.execute_initial_peek_command,
+        token,
         game_session_id,
-        user,
         body.request_id,
         body.position
     )
+    
+    if outcome.status == "Accepted" and not outcome.replayed:
+        await notification_game_changed(game_session_id)
+
+    return outcome
 
 @router.get(
     "/{game_session_id}",
@@ -70,15 +81,23 @@ def get_initial_peek_view(
     response_model=InitialPeekCompleteCommandOutcome,
     dependencies=[OriginCheckDep]
 )
-def complete_initial_peek_command(
-    session: SessionDep,
-    user: ActiveUserDep,
+async def complete_initial_peek_command(
+    request: Request,
     game_session_id: UUID,
     body: InitialPeekCompleteCommandRequest
-):
-    return game_command.execute_complete_initial_peek_command(
-        session,
-        user,
+):  
+    token = request.cookies.get("session_token")
+    if not token:
+        raise exceptions.InvalidCookieException()
+
+    outcome = await run_in_threadpool(
+        game_command.execute_complete_initial_peek_command,
+        token,
         game_session_id,
         body.request_id
     )
+    
+    if outcome.status == "Accepted" and not outcome.replayed:
+        await notification_game_changed(game_session_id)
+
+    return outcome
