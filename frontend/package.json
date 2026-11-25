@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "node scripts/dev-server.mjs",
     "build": "node scripts/build.mjs",
-    "check": "node --check src/app.js && node --check src/mock.js && node --check src/adapter.js && node --check src/auth-api.js && node --check src/room-api.js && node --check src/room-ws.js && node --check src/real-room-state.js && node --check src/registration.js && node --check scripts/dev-server.mjs",
+    "check": "node --check src/app.js && node --check src/mock.js && node --check src/adapter.js && node --check src/auth-api.js && node --check src/room-api.js && node --check src/room-ws.js && node --check src/real-room-state.js && node --check src/game-api.js && node --check src/game-ws.js && node --check src/real-game-state.js && node --check src/real-game-ui.js && node --check src/registration.js && node --check scripts/dev-server.mjs",
     "test": "node --test tests/*.test.js"
   }
 }
