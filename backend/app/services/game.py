@@ -18,6 +18,7 @@ from app.database import engine
 from app.services import auth, game_context
 from app.game_logic import (build_cabo_deck, shuffle_deck, deal_initial_cards,
                             INITIAL_PEEK_DURATION_SECONDS, TURN_DURATION_SECONDS)
+from app.database import engine
 
 def validate_start_game(
     session: Session,
@@ -676,3 +677,43 @@ def get_initial_peek_view(
     except Exception:
         session.rollback()
         raise
+
+def verify_game_subscription_permission(
+    session: Session,
+    account_id: UUID,
+    game_session_id: UUID
+)->bool:
+    authorized_account_id = session.execute(
+        select(GamePlayer.account_id).join(
+            GameSession,
+            GamePlayer.game_session_id == GameSession.id,
+        ).where(
+            GamePlayer.game_session_id == game_session_id,
+            GamePlayer.account_id == account_id,
+            GameSession.state == "Playing",
+        )
+    ).scalar_one_or_none()
+    return authorized_account_id is not None
+
+def verify_game_ws_access(
+    game_session_id: UUID,
+    session_token: str
+)->UUID|None:
+    with Session(engine) as session:
+        try:
+            user = auth.get_authenticated_account(
+                session,
+                session_token
+            )
+        except exceptions.InvalidCookieException:
+            return None
+        
+        allowed = verify_game_subscription_permission(
+            session,
+            user.id,
+            game_session_id
+        )
+        if not allowed:
+            return None
+        else:
+            return user.id
