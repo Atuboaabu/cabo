@@ -15,7 +15,7 @@ from app.schemas import (GameStartResponse, InitialPeekResult,
                          ActiveTurnView, InitialPeekCardView,
                          InitialPeekPrivateView)
 from app.database import engine
-from app.services import auth
+from app.services import auth, game_context
 from app.game_logic import (build_cabo_deck, shuffle_deck, deal_initial_cards,
                             INITIAL_PEEK_DURATION_SECONDS, TURN_DURATION_SECONDS)
 
@@ -176,50 +176,13 @@ def execute_start_game(
             started_at=game_session.started_at
         )
 
-def _get_locked_game_session(
-    session: Session,
-    game_session_id: UUID
-)->GameSession | None:
-    game_session = session.execute(
-        select(GameSession).where(
-            GameSession.id == game_session_id
-        ).with_for_update()
-    ).scalar_one_or_none()
-    return game_session
-
-def _get_locked_game_context(
-    session: Session,
-    user_account: UserAccount,
-    game_session_id: UUID
-)->tuple[GameSession, GamePlayer]:
-    game_session = _get_locked_game_session(
-        session,
-        game_session_id
-    )
-
-    game_player = session.execute(
-        select(GamePlayer).where(
-            GamePlayer.game_session_id == game_session_id,
-            GamePlayer.account_id == user_account.id
-        )
-    ).scalar_one_or_none()
-
-    if (game_session is None
-        or game_player is None):
-        raise exceptions.GameNotAccessibleException()
-    
-    if game_session.ended_at is not None:
-        raise exceptions.GameAlreadyEndedException()
-    
-    return game_session, game_player
-
 def apply_initial_peek(
     session: Session,
     user_account: UserAccount,
     game_session_id: UUID,
     position: int
 )->InitialPeekResult:
-    game_session, game_player = _get_locked_game_context(
+    game_session, game_player = game_context.get_locked_game_context(
         session,
         user_account,
         game_session_id
@@ -364,7 +327,7 @@ def complete_initial_peek(
     game_session_id: UUID
 )->InitialPeekCompleteResult:
     try:
-        game_session, game_player = _get_locked_game_context(
+        game_session, game_player = game_context.get_locked_game_context(
             session,
             user_account,
             game_session_id
@@ -418,7 +381,7 @@ def expire_initial_peek(
     game_session_id: UUID
 )->InitialPeekTimeoutResult:
     try:
-        game_session = _get_locked_game_session(
+        game_session = game_context.get_locked_game_session(
             session,
             game_session_id
         )
@@ -465,7 +428,7 @@ def get_game_view(
     game_session_id: UUID,
 )->GameView:
     try:
-        game_session, viewer = _get_locked_game_context(
+        game_session, viewer = game_context.get_locked_game_context(
             session,
             user_account,
             game_session_id
@@ -638,7 +601,7 @@ def get_initial_peek_view(
     game_session_id: UUID,
 )->InitialPeekPrivateView:
     try:
-        game_session, game_player = _get_locked_game_context(
+        game_session, game_player = game_context.get_locked_game_context(
             session,
             user_account,
             game_session_id
