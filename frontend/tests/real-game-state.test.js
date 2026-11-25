@@ -152,3 +152,23 @@ test('pause and logout-like reset immediately clear private data, socket and tim
  assert.equal(storage.getItem('cabo.lastRealGameId'),null);
  assert.equal(clock.timers.size,0);
 });
+
+test('page reload restores unknown original Command request_id, but never private values',async()=>{
+ const clock=new Clock(),storage=store();
+ const api={
+  getGame:async()=>game(0,clock),
+  getInitialPeekView:async()=>({game_session_id:id,account_id:me,revealed_cards:[],remaining_peek_count:2,deadline_at:deadline,server_time:new Date(clock.now).toISOString()}),
+  initialPeek:async()=>{throw Object.assign(new Error('lost response'),{outcomeUnknown:true});}
+ };
+ const one=setup({clock,storage,api}).controller;
+ await one.enter(id,{roomId});await tick();
+ assert.equal(await one.peek(0),false);
+ const original=one.state.pendingCommand.requestId;
+ one.pause();
+ const two=setup({clock,storage,api}).controller;
+ assert.equal(await two.restore({roomId}),true);
+ assert.equal(two.state.pendingCommand.requestId,original);
+ assert.equal(two.validPeekPosition(1),false);
+ assert.deepEqual(two.state.privateCards,{});
+ assert.doesNotMatch(storage.dump(),/revealed_cards|privateCards/);
+});
