@@ -240,7 +240,10 @@ export function createRealGameState({
  }
  async function enter(id,{roomId=null}={}){
   if(!validId(id))return false;
-  if(state.gameId===id&&state.view)return true;
+  if(state.gameId===id&&state.view){
+   paused=false;
+   return sync({silent:true,expectedRoomId:roomId});
+  }
   reset({clearLocator:false});
   state.gameId=id;
   emit();
