@@ -282,20 +282,25 @@ async function send(command,payload={}){
 }
 // HttpOnly Cookie remains browser-managed; only public Account fields live here.
 async function restoreRealSession({skipRoomRestore=false}={}){
- realRooms.pauseNotifications();
+ realRooms.pauseNotifications();realGames.pause();
  realAuthState='checking';render();
  try{
   const account=await createAuthApi().getMe();
   if(realAccount?.id && realAccount.id!==account.id){
    realRoomConfirmation=null;
-   realRooms.reset(); // Account switch must not reuse a previous member's Room View.
+   realGames.reset();realRooms.reset(); // Account switch must not reuse a previous member's Room View.
   }
   realAccount=account;realAuthState='authenticated';realAuthError='';screen='real-account';
-  if(!skipRoomRestore)await realRooms.restore();
+  if(!skipRoomRestore){
+   await realRooms.restore();
+   // A verified Game locator may survive a page reload; it never grants access.
+   if(realRooms.state.view?.state!=='Lobby'&&rememberedGameId()&&screen==='real-account')
+    await openRealGame(rememberedGameId(),{roomId:realRooms.state.roomId});
+  }
  }catch(error){
   realAccount=null;screen='auth';authMode='login';
   if(error.status===401){
-   realAuthState='anonymous';realAuthError='';realRoomConfirmation=null;realRooms.reset();
+   realAuthState='anonymous';realAuthError='';realRoomConfirmation=null;realGames.reset();realRooms.reset();
   }else{
    realAuthState='unavailable';
    realAuthError=error.message||'认证服务暂不可用，无法确认当前会话。';
@@ -312,13 +317,15 @@ async function submitRealLogin(form,data){
  showFormFeedback(feedback,'正在登录…','info');
  try{
   const account=await createAuthApi().login({email:data.email,password:data.password});
-  if(realAccount?.id && realAccount.id!==account.id){realRoomConfirmation=null;realRooms.reset();}
+  if(realAccount?.id && realAccount.id!==account.id){realRoomConfirmation=null;realGames.reset();realRooms.reset();}
   realAccount=account;
   realAuthState='authenticated';
   realAuthError='';
   screen='real-account';
   notice='';
   await realRooms.restore();
+  if(realRooms.state.view?.state!=='Lobby'&&rememberedGameId()&&screen==='real-account')
+   await openRealGame(rememberedGameId(),{roomId:realRooms.state.roomId});
   render();
  }catch(error){
   if(form.isConnected)showFormFeedback(feedback,error.message||'登录失败，请稍后再试。','error');
@@ -330,17 +337,17 @@ async function submitRealLogin(form,data){
 }
 async function logoutRealSession(){
  if(realBusy||realAuthState!=='authenticated')return;
- realRooms.pauseNotifications();
+ realRooms.pauseNotifications();realGames.pause();
  realBusy=true;realAuthError='';render();
  try{
   await createAuthApi().logout();
   realRoomConfirmation=null;
-  realRooms.reset();
+  realGames.reset();realRooms.reset();
   realAccount=null;realAuthState='anonymous';screen='auth';authMode='login';
  }catch(error){
   if(error.status===401){
    realRoomConfirmation=null;
-   realRooms.reset();
+   realGames.reset();realRooms.reset();
    realAccount=null;realAuthState='anonymous';screen='auth';authMode='login';
   }else{
    // A network failure is not evidence that the server revoked the session.
