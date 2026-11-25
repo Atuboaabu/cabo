@@ -134,13 +134,15 @@ export function createRealGameState({
   clearPrivate();emit();
   scheduleCompensation();
  }
- function updateDeadline(g,old){
+ function updateDeadline(g,old,requestStart){
   if(deadlineTimer!==null){clearTimeoutFn(deadlineTimer);deadlineTimer=null;}
   if(compensationTimer!==null){clearTimeoutFn(compensationTimer);compensationTimer=null;}
   if(g.phase!=='InitialPeek'){
    state.deadlineMs=null;compensationTries=0;clearPrivate();return;
   }
-  const newMs=now()+Date.parse(g.initial_peek_deadline_at)-Date.parse(g.server_time);
+  // Use request start, not response arrival: a delayed response must never
+  // extend the original server-authorized private reveal window.
+  const newMs=requestStart+Date.parse(g.initial_peek_deadline_at)-Date.parse(g.server_time);
   state.deadlineMs=old?.phase==='InitialPeek'&&state.deadlineMs!==null
     ? Math.min(state.deadlineMs,newMs):newMs;
   if(own()?.initial_peek_completed){state.privateEnded=true;clearPrivate();}
@@ -195,7 +197,7 @@ export function createRealGameState({
  async function sync({silent=false,expectedRoomId=null}={}){
   if(!state.gameId||paused)return false;
   if(syncPromise){queuedSync=true;return syncPromise;}
-  const id=state.gameId,token=generation;
+  const id=state.gameId,token=generation,requestStart=now();
   state.pending=state.pending||'read';
   if(!silent){state.error='';emit();}
   let success=false;
@@ -206,7 +208,8 @@ export function createRealGameState({
     if(!validGameView(g)||g.id.toLowerCase()!==id.toLowerCase()||
        (expectedRoomId&&g.room_id.toLowerCase()!==expectedRoomId.toLowerCase())||
        g.viewer_account_id!==getAccountId()){
-      clearPrivate();state.error='GameView 身份、Room 或 Schema 不兼容，已停止使用响应。';
+      clearPrivate();state.privateEnded=true;state.refreshNeeded=true;
+      state.error='GameView 身份、Room 或 Schema 不兼容，已停止使用响应。';
       emit();return false;
     }
     if(state.view&&g.state_revision<state.view.state_revision)return true;
@@ -216,7 +219,7 @@ export function createRealGameState({
     safeSet(storage,KEY,id);
     if(changed){
      if(g.phase!=='InitialPeek')state.privateEnded=true;
-     updateDeadline(g,old);
+     updateDeadline(g,old,requestStart);
      if(state.pendingCommand&&(!isInitial()||own()?.initial_peek_completed)){
       state.pendingCommand=null;safeSet(storage,COMMAND_KEY,null);state.outcomeUnknown=false;
      }
