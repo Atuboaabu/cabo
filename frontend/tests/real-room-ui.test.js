@@ -497,7 +497,8 @@ test('Host Start button enabled only for verified eligible Lobby, hidden for gue
  const playing=boot({storedId:id,roomApi:{getRoom:async()=>({...baseRoom,state:'Playing',members:readyMembers})}});
  await flush();await flush();
  assert.match(playing.root.innerHTML,/游戏已开始/);
- assert.match(playing.root.innerHTML,/真实 Game View、发牌和回合功能尚未接入/);
+ assert.match(playing.root.innerHTML,/GameView 可由已验证的 GameSession ID 查询/);
+ assert.match(playing.root.innerHTML,/real-game-join-form/);
  assert.doesNotMatch(playing.root.innerHTML,/data-action="realRoomStart"/);
  assert.doesNotMatch(playing.root.innerHTML,/data-action="realRoomDisband"/);
  assert.equal(playing.store.getItem('cabo.lastRealRoomId'),id);
