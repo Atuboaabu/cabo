@@ -59,7 +59,10 @@ export function createRealGameState({
   },
   onClosed:id=>{
    if(id.toLowerCase()!==state.gameId?.toLowerCase()||paused)return;
-   state.wsConnected=false;emit();
+   state.wsConnected=false;
+   // A dropped Game socket may also signal session invalidation/takeover.
+   // Discard all ephemeral secrets until HTTP permission is verified anew.
+   clearPrivate();emit();
    queueReconnect();
   }
  });
