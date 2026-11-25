@@ -39,6 +39,17 @@ function boot({roomApi,storedId=null,me=account}={}){
   createRoomApi:()=>roomApi,
   createRoomSocket:options=>{onRoomChanged=options.onChanged;onRoomClosed=options.onClosed;return {connect(){},close(){}};},
   createRealRoomState,
+  createGameApi:()=>({}),
+  createGameSocket:()=>({connect(){},close(){}}),
+  createRealGameState:()=>({
+   state:{gameId:null,view:null,pending:null,error:''},
+   pause(){},reset(){},remember(){return true;},enter:async()=>false,
+   sync:async()=>false,onReturn(){},validPeekPosition:()=>false,
+   canComplete:()=>false,remainingMs:()=>0,peek:async()=>false,
+   complete:async()=>false,retryPending:async()=>false
+  }),
+  realGameMarkup:()=>'<section>真实 GameView</section>',
+  GAME_ID:/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
   setInterval(){},
   FormData:class{
    constructor(form){this.fields=form.fields;}
