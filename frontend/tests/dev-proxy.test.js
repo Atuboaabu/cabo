@@ -213,3 +213,43 @@ test('Room proxy strict methods/UUIDs, POST+PUT Origin, Cookie, body and Auth re
  });
  assert.equal(oversized.status,413);
 });
+
+test('Start and real Game routes use exact UUID/method proxy allowlist with Origin and Cookie',async(t)=>{
+ const room='123e4567-e89b-12d3-a456-426614174000';
+ const game='123e4567-e89b-12d3-a456-426614174100';
+ const received=[];
+ const backend=createServer(async(req,res)=>{
+  let data='';for await(const chunk of req)data+=chunk.toString();
+  received.push({method:req.method,path:req.url,origin:req.headers.origin,cookie:req.headers.cookie,body:data});
+  res.writeHead(req.url.endsWith('/start')?201:200,{'Content-Type':'application/json'});
+  res.end(JSON.stringify({ok:true}));
+ });
+ const upstreamPort=await listen(backend);
+ t.after(()=>new Promise(resolve=>backend.close(resolve)));
+ const port=await findPort();
+ const child=await startProxy('http://127.0.0.1:'+upstreamPort,port);
+ t.after(()=>child.kill());
+ const base='http://127.0.0.1:'+port,origin='http://localhost:5173';
+ const headers={Origin:origin,Cookie:'session_token=opaque-browser-value','Content-Type':'application/json'};
+ const allowed=[
+  ['POST','/rooms/'+room+'/start',201],
+  ['GET','/games/'+game,200],
+  ['GET','/games/'+game+'/initial-peek-view',200],
+  ['POST','/games/'+game+'/commands/initial-peek',200],
+  ['POST','/games/'+game+'/commands/complete-initial-peek',200]
+ ];
+ for(const [method,path,status] of allowed){
+  const res=await fetch(base+path,{method,headers,...(method==='POST'&&!path.endsWith('/start')?{body:'{"request_id":"'+game+'","position":0}'}:{})});
+  assert.equal(res.status,status);
+  const request=received.at(-1);
+  assert.equal(request.path,path);
+  assert.equal(request.method,method);
+  assert.equal(request.cookie,headers.Cookie);
+  if(method==='POST')assert.equal(request.origin,origin);
+ }
+ for(const path of ['/games/not-a-uuid','/games/'+game+'/hidden-admin','/rooms/'+room+'/game']){
+  const res=await fetch(base+path,{method:'GET'});
+  assert.equal(res.status,404);
+ }
+ assert.equal((await fetch(base+'/games/'+game,{method:'POST',headers})).status,405);
+});
