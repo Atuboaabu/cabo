@@ -254,6 +254,12 @@ export function createRealGameState({
  }
  function remember(id){
   if(!validId(id))return false;
+  // A new Start must not reuse a previous Game's in-memory identity,
+  // private reveal state, socket, or unknown Command.
+  if(state.gameId&&state.gameId!==id){
+   reset({clearLocator:false});
+   safeSet(storage,COMMAND_KEY,null);
+  }
   safeSet(storage,KEY,id);
   return true;
  }
