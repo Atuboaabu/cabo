@@ -585,12 +585,15 @@ function recheckRoomOnFocus(){
   if(realAuthState==='authenticated'&&screen==='real-account'&&!realBusy)
    realRooms.verifyOnReturn();
   if(realAuthState==='authenticated'&&screen==='real-game'&&!realBusy)
-   realGames.onReturn();
+   realGames.resume();
  });
 }
 window.addEventListener('focus',recheckRoomOnFocus);
 if(typeof document.addEventListener==='function'){
  document.addEventListener('visibilitychange',()=>{
+  // Secret numbers cannot remain in a background tab beyond the original
+  // shared deadline; resume re-authorizes through GameView/PrivateView.
+  if(document.visibilityState==='hidden'&&screen==='real-game')realGames.pause();
   if(document.visibilityState==='visible')recheckRoomOnFocus();
  });
 }
