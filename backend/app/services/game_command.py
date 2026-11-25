@@ -177,7 +177,7 @@ def execute_initial_peek_command(
                 position
             )
         except tuple(BUSINESS_REJECTIONS) as exc:
-            reason = BUSINESS_REJECTIONS[type[exc]]
+            reason = BUSINESS_REJECTIONS[type(exc)]
             request.status = "Rejected"
             request.decided_at = datetime.now(timezone.utc)
             request.result_payload = {"reason": reason}
@@ -191,8 +191,8 @@ def execute_initial_peek_command(
 
         request.status = "Accepted"
         request.decided_at = datetime.now(timezone.utc)
-        request.request_payload = {
-            "position": position,
+        request.result_payload = {
+            "position": peek_result.position,
             "remaining_peek_count": peek_result.remaining_peek_count
         }
         session.commit()
