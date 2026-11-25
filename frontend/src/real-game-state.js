@@ -22,7 +22,7 @@ export function createRealGameState({
 }={}){
  const state={
   gameId:null,view:null,privateCards:{},privateRemaining:null,
-  pending:null,pendingCommand:null,error:'',outcomeUnknown:false,
+  pending:null,pendingCommand:null,error:'',outcomeUnknown:false,privateEnded:false,
   deadlineMs:null,wsConnected:false,refreshNeeded:false
  };
  let generation=0,paused=false,syncPromise=null,queuedSync=false,deadlineTimer=null,
@@ -68,7 +68,7 @@ export function createRealGameState({
   stopTimers();socket?.close();reconnectAttempts=0;
   clearPrivate();state.gameId=null;state.view=null;state.pending=null;
   state.pendingCommand=null;state.error='';state.outcomeUnknown=false;
-  state.deadlineMs=null;state.wsConnected=false;state.refreshNeeded=false;
+  state.deadlineMs=null;state.wsConnected=false;state.refreshNeeded=false;state.privateEnded=false;
   if(clearLocator){safeSet(storage,KEY,null);safeSet(storage,COMMAND_KEY,null);}
   emit();
  }
@@ -138,7 +138,7 @@ export function createRealGameState({
   const newMs=now()+Date.parse(g.initial_peek_deadline_at)-Date.parse(g.server_time);
   state.deadlineMs=old?.phase==='InitialPeek'&&state.deadlineMs!==null
     ? Math.min(state.deadlineMs,newMs):newMs;
-  if(own()?.initial_peek_completed)clearPrivate();
+  if(own()?.initial_peek_completed){state.privateEnded=true;clearPrivate();}
   const left=remainingMs();
   if(left<=0){clearPrivate();scheduleCompensation();}
   else{
@@ -158,11 +158,11 @@ export function createRealGameState({
  async function readPrivate(){
   const id=state.gameId,token=generation,epoch=privateEpoch;
   const view=state.view;
-  if(paused||!isInitial()||!own()||own().initial_peek_completed||remainingMs()<=0)return false;
+  if(paused||!isInitial()||!own()||state.privateEnded||own().initial_peek_completed||remainingMs()<=0)return false;
   try{
    const p=await api.getInitialPeekView(id);
    if(token!==generation||epoch!==privateEpoch||id!==state.gameId||
-      state.view?.phase!=='InitialPeek'||own()?.initial_peek_completed||remainingMs()<=0)return false;
+      state.view?.phase!=='InitialPeek'||state.privateEnded||own()?.initial_peek_completed||remainingMs()<=0)return false;
    if(p.game_session_id!==id||p.account_id!==getAccountId()||
       Date.parse(p.deadline_at)!==Date.parse(view.initial_peek_deadline_at)||
       Date.parse(p.server_time)>=Date.parse(p.deadline_at)){
@@ -206,6 +206,7 @@ export function createRealGameState({
     state.view=g;state.error='';state.refreshNeeded=false;
     safeSet(storage,KEY,id);
     if(changed){
+     if(g.phase!=='InitialPeek')state.privateEnded=true;
      updateDeadline(g,old);
      if(state.pendingCommand&&(!isInitial()||own()?.initial_peek_completed)){
       state.pendingCommand=null;safeSet(storage,COMMAND_KEY,null);state.outcomeUnknown=false;
@@ -220,6 +221,9 @@ export function createRealGameState({
     if(token!==generation||id!==state.gameId)return false;
     clearPrivate();
     if([401,403,404].includes(error?.status)){revoke(error);return false;}
+    if(error?.code==='INVALID_GAME_STATE'||error?.code==='GAME_ENDED'){
+     state.privateEnded=true;stopTimers();socket?.close();state.wsConnected=false;
+    }
     state.error=error?.message||'暂时无法同步游戏。';
     state.refreshNeeded=true;emit();return false;
    }finally{
@@ -267,7 +271,7 @@ export function createRealGameState({
   return ok;
  }
  function validPeekPosition(position){
-  return isInitial()&&remainingMs()>0&&!own()?.initial_peek_completed&&
+  return isInitial()&&remainingMs()>0&&!state.privateEnded&&!state.refreshNeeded&&!own()?.initial_peek_completed&&
    state.pending===null&&!state.pendingCommand&&
    Number.isInteger(position)&&position>=0&&position<=3&&
    own().hand_cards.some(c=>c.position===position)&&
@@ -275,7 +279,7 @@ export function createRealGameState({
    own().initial_peek_confirmed_positions.length<2;
  }
  function canComplete(){
-  return isInitial()&&remainingMs()>0&&!own()?.initial_peek_completed&&
+  return isInitial()&&remainingMs()>0&&!state.privateEnded&&!state.refreshNeeded&&!own()?.initial_peek_completed&&
    !state.pending&&!state.pendingCommand;
  }
  async function command(type,position=null,{retry=false}={}){
@@ -314,7 +318,7 @@ export function createRealGameState({
     state.error=message[outcome.reason]||'服务器拒绝了该命令，请同步最新 GameView。';
     if(['INITIAL_PEEK_EXPIRED','INITIAL_PEEK_COMPLETED','INVALID_GAME_STATE','GAME_ENDED'].includes(outcome.reason))clearPrivate();
    }else if(outcome.status==='Accepted'){
-    if(type==='complete')clearPrivate();
+    if(type==='complete'){state.privateEnded=true;clearPrivate();}
     else if(outcome.peek_result&&isInitial()&&remainingMs()>0&&
        Date.parse(outcome.peek_result.deadline_at)===Date.parse(state.view.initial_peek_deadline_at)&&
        outcome.peek_result.position===meta.position){
