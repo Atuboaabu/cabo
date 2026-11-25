@@ -467,6 +467,29 @@ root.addEventListener('click',e=>{
  if(a==='requestRegistrationCode'){requestRealRegistrationCode(el);return;}
  if(a==='retryRealAuth'){restoreRealSession();return;}
  if(a==='realLogout'){logoutRealSession();return;}
+ if(a==='realGameRefresh'&&screen==='real-game'){void realGames.sync();return;}
+ if(a==='realGameBack'&&screen==='real-game'){
+  realGameEndConfirm=false;realGames.pause();screen='real-account';render();return;
+ }
+ if(a==='realGameRetry'&&screen==='real-game'){void realGames.retryPending();return;}
+ if(a.startsWith('realGamePeek:')&&screen==='real-game'){
+  const pos=Number(a.slice('realGamePeek:'.length));
+  if(realGames.validPeekPosition(pos))void realGames.peek(pos);
+  return;
+ }
+ if(a==='realGameEnd'&&screen==='real-game'){
+  if(realGames.canComplete()){realGameEndConfirm=true;render();}
+  return;
+ }
+ if(a==='realGameEndCancel'&&screen==='real-game'){realGameEndConfirm=false;render();return;}
+ if(a==='realGameEndApprove'&&screen==='real-game'){
+  realGameEndConfirm=false;void realGames.complete();render();return;
+ }
+ if(a==='realGameOpen'&&screen==='real-account'){
+  const known=rememberedGameId();
+  if(known)void openRealGame(known,{roomId:realRooms.state.roomId});
+  return;
+ }
  if(a==='realRoomCreate'&&realAuthState==='authenticated'&&screen==='real-account'){realRooms.createRoom();return;}
  if(a==='realRoomRefresh'&&realAuthState==='authenticated'&&screen==='real-account'){realRooms.refresh();return;}
  if(a==='realRoomRecheck'&&realAuthState==='authenticated'&&screen==='real-account'){restoreRealSession({skipRoomRestore:true});return;}
@@ -512,6 +535,11 @@ root.addEventListener('input',e=>{
 root.addEventListener('submit',e=>{
  e.preventDefault();
  const f=e.target,p=Object.fromEntries(new FormData(f));
+ if(f.id==='real-game-join-form'){
+  if(screen==='real-account'&&realAuthState==='authenticated'&&GAME_ID.test(String(p.gameId||'')))
+   void openRealGame(String(p.gameId),{roomId:realRooms.state.roomId});
+  return;
+ }
  if(f.id==='real-room-join-form'){
   if(realAuthState==='authenticated'&&screen==='real-account'){
    realRooms.setJoinCode(p.roomCode);realRooms.joinRoom();
@@ -538,12 +566,16 @@ setInterval(()=>{
  if(updated.game?.phase!==view.game?.phase||updated.game?.turnStep!==view.game?.turnStep||updated.session!==view.session){render();return;}
  root.querySelectorAll('[data-deadline]').forEach(el=>{const d=Number(el.dataset.deadline)||null;el.textContent=(el.id==='timer'?'⏱ ':'')+formatRemaining(d);});
  updateVerificationCountdown();
+ if(screen==='real-game'){
+  const countdown=root.querySelector('#real-game-countdown');
+  if(countdown)countdown.textContent=Math.ceil(realGames.remainingMs()/1000)+' 秒';
+ }
 },500);
 // A room socket may have failed to connect or its close notification may be
 // missed while the page is backgrounded. Revalidate on return, not by polling.
 let roomFocusCheckScheduled=false;
 function recheckRoomOnFocus(){
- if(realAuthState!=='authenticated'||screen!=='real-account'||realBusy||
+ if(realAuthState!=='authenticated'||!['real-account','real-game'].includes(screen)||realBusy||
     roomFocusCheckScheduled)return;
  roomFocusCheckScheduled=true;
  // Coalesce focus + visibilitychange from the same foreground transition,
@@ -552,6 +584,8 @@ function recheckRoomOnFocus(){
   roomFocusCheckScheduled=false;
   if(realAuthState==='authenticated'&&screen==='real-account'&&!realBusy)
    realRooms.verifyOnReturn();
+  if(realAuthState==='authenticated'&&screen==='real-game'&&!realBusy)
+   void realGames.sync({silent:true});
  });
 }
 window.addEventListener('focus',recheckRoomOnFocus);
@@ -560,7 +594,7 @@ if(typeof document.addEventListener==='function'){
   if(document.visibilityState==='visible')recheckRoomOnFocus();
  });
 }
-window.addEventListener('pagehide',()=>realRooms.pauseNotifications());
+window.addEventListener('pagehide',()=>{realRooms.pauseNotifications();realGames.pause();});
 window.addEventListener('pageshow',e=>{if(e.persisted)restoreRealSession();});
 window.addEventListener('keydown',e=>{if(screen!=='real-account'&&e.altKey&&e.shiftKey&&e.key.toLowerCase()==='m'){e.preventDefault();confirm('模拟新设备接管','旧连接会停止接受受保护操作。','takeover');}});
 render();
