@@ -4,7 +4,7 @@ export function realGameMarkup(controller,account,endConfirm=false){
  const s=controller.state,g=s.view;
  const seconds=Math.ceil(controller.remainingMs()/1000);
  const owner=g?.players.find(p=>p.account_id===account?.id);
- const canSeePrivate=g?.phase==='InitialPeek'&&!owner?.initial_peek_completed&&
+ const canSeePrivate=g?.phase==='InitialPeek'&&!s.privateEnded&&!owner?.initial_peek_completed&&
    controller.remainingMs()>0;
  const error=s.error?'<p role="alert" class="real-room-feedback" data-tone="error">'+esc(s.error)+'</p>':'';
  const header='<section class="section-heading"><div><span class="eyebrow">REAL GAME · FASTAPI</span><h1>真实 CABO 游戏</h1></div><div class="button-row"><button class="outline" type="button" data-action="realGameRefresh" '+(s.pending?'disabled':'')+'>同步 GameView</button><button class="outline" type="button" data-action="realGameBack">返回真实房间</button><button class="danger" type="button" data-action="realLogout">退出登录</button></div></section>';
@@ -34,7 +34,7 @@ export function realGameMarkup(controller,account,endConfirm=false){
  if(g.phase==='InitialPeek'){
   stage='<article class="paper-card"><h2>InitialPeek · 共享初始查看</h2><p>共享窗口剩余时间：<strong id="real-game-countdown">'+esc(seconds)+' 秒</strong></p>'+
    (seconds<=0?'<p role="status">初始查看已截止，正在等待服务器 Timeout Worker 确认阶段转换。</p>':
-    owner?.initial_peek_completed?'<p role="status">你已完成 InitialPeek，等待其他玩家或截止时间。</p>':
+    (owner?.initial_peek_completed||s.privateEnded)?'<p role="status">你已结束 InitialPeek，等待其他玩家或截止时间。</p>':
     '<p>最多查看两张不同的本人初始牌；查看两张后仍需主动 End。</p><button type="button" class="primary" data-action="realGameEnd" '+(controller.canComplete()?'':'disabled')+'>主动结束 InitialPeek</button>')+'</article>';
  }else if(g.phase==='PlayerTurn'){
   const t=g.active_turn,acting=g.players.find(p=>p.account_id===t.acting_account_id)?.username||t.acting_account_id;
