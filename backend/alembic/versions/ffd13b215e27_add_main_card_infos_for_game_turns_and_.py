@@ -86,6 +86,18 @@ def downgrade() -> None:
         'game_cards',
         "location IN ('DrawPile', 'DiscardPile', 'Hand')"
     )
+    op.drop_constraint(
+        "ck_game_turns_state_valid",
+        "game_turns",
+        type_="check"
+    )
+    op.create_check_constraint(
+        "ck_game_turns_state_valid",
+        "game_turns",
+        "(state = 'AwaitingAction' AND ended_at IS NULL) OR " \
+        "(state IN ('Completed', 'Aborted') " \
+        "AND ended_at IS NOT NULL)"
+    )
     op.drop_constraint('ck_game_turns_state_inrange', 'game_turns', type_="Check")
     op.create_check_constraint(
         'ck_game_turns_state_inrange',
