@@ -231,7 +231,7 @@ function settings(){
 }
 function render(){
  if(screen==='real-game'&&realAuthState==='authenticated'){
-  root.innerHTML=shell(realGameMarkup(realGames.state),'dashboard-main');return;
+  root.innerHTML=shell(realGameMarkup(realGames.state),'game-main');return;
  }
  view=assertCompatible(gateway.snapshot());
  if(realAuthState==='checking'){root.innerHTML=realAuthLoading();return;}
