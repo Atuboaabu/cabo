@@ -11,7 +11,7 @@ from app.exc import exceptions
 from app.schemas import (GameStartResponse, InitialPeekResult,
                          InitialPeekCompleteResult, InitialPeekTimeoutResult,
                          GamePlayerView, GameView, FaceDownCardView,
-                         DrawPileView, DiscardPileView,
+                         DrawPileView, DiscardPileView, DrawPilePrivateView, 
                          ActiveTurnView, InitialPeekCardView,
                          InitialPeekPrivateView)
 from app.database import engine
@@ -717,3 +717,71 @@ def verify_game_ws_access(
             return None
         else:
             return user.id
+
+def apply_draw_from_drawpile(
+    session: Session,
+    user_account: UserAccount,
+    game_session_id: UUID,
+)->DrawPilePrivateView:
+    game_session, game_player = game_context.get_locked_game_context(
+        session,
+        user_account,
+        game_session_id
+    )
+
+    if (game_session.state != "Playing" and 
+        game_session.phase != "PlayerTurn"):
+        raise exceptions.InvalidGameStateException()
+
+    game_turn = session.execute(
+        select(GameTurn).where(
+            GameTurn.game_session_id == game_session.id,
+            GameTurn.ended_at.is_(None)
+        )
+    ).scalar_one_or_none()
+    if game_turn is None:
+        raise exceptions.GameNotAccessibleException()
+    
+    if game_turn.game_player_id != game_player.id:
+        raise exceptions.RequesterWrongException()
+    
+    draw_card = session.execute(
+        select(GameCard).where(
+            GameCard.game_session_id == game_session.id,
+            GameCard.location == "DrawPile"
+        ).order_by(
+            GameCard.position.desc()
+        ).limit(1)
+    ).scalar_one_or_none()
+    if draw_card is None:
+        raise exceptions.DrawPileExhaustedException()
+    
+    draw_card.location = "PendingAction"
+    game_turn.main_card_id = draw_card.id
+    game_turn.main_card_source = "DrawPile"
+    game_turn.state = "AwaitingCardDecision"
+    game_session.state_revision += 1
+
+    result = DrawPilePrivateView(value=draw_card.value)
+
+    session.flush()
+    return result
+
+def draw_from_drawpile(
+    session: Session,
+    user_account: UserAccount,
+    game_session_id: UUID,
+)->DrawPilePrivateView:
+    try:
+        result = apply_draw_from_drawpile(
+            session,
+            user_account,
+            game_session_id
+        )
+
+        session.commit()
+        return result
+    except Exception:
+        session.rollback()
+        raise
+        

@@ -101,3 +101,6 @@ class InitialPeekPrivateView(BaseModel):
 
     deadline_at: datetime
     server_time: datetime
+
+class DrawPilePrivateView(BaseModel):
+    value: int = Field(ge=0, le=13)

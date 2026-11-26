@@ -94,3 +94,6 @@ class InitialPeekCountExceedException(Exception):
 
 class GameTurnAlreadyCreatedException(Exception):
     pass
+
+class DrawPileExhaustedException(Exception):
+    pass

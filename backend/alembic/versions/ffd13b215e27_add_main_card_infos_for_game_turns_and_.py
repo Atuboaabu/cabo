@@ -25,13 +25,13 @@ def upgrade() -> None:
     op.add_column('game_turns', sa.Column('main_card_source', sa.String(length=20), nullable=True))
     op.create_foreign_key('fk_game_turns_main_card_id', 'game_turns', 'game_cards', ['main_card_id'], ['id'])
     # ### end Alembic commands ###
-    op.drop_constraint('ck_game_cards_location_valid', 'game_cards', type_="Check")
+    op.drop_constraint('ck_game_cards_location_valid', 'game_cards', type_="check")
     op.create_check_constraint(
         'ck_game_cards_location_valid',
         'game_cards',
         "location IN ('DrawPile', 'PendingAction', 'DiscardPile', 'Hand')"
     )
-    op.drop_constraint('ck_game_turns_state_inrange', 'game_turns', type_="Check")
+    op.drop_constraint('ck_game_turns_state_inrange', 'game_turns', type_="check")
     op.create_check_constraint(
         'ck_game_turns_state_inrange',
         'game_turns',
@@ -80,7 +80,7 @@ def downgrade() -> None:
     # WARNING: constraint name is None; this directive will fail as
     # rendered.  Add a name, or use a naming convention; see
     # https://alembic.sqlalchemy.org/en/latest/naming.html
-    op.drop_constraint('ck_game_cards_location_valid', 'game_cards', type_="Check")
+    op.drop_constraint('ck_game_cards_location_valid', 'game_cards', type_="check")
     op.create_check_constraint(
         'ck_game_cards_location_valid',
         'game_cards',
@@ -98,15 +98,15 @@ def downgrade() -> None:
         "(state IN ('Completed', 'Aborted') " \
         "AND ended_at IS NOT NULL)"
     )
-    op.drop_constraint('ck_game_turns_state_inrange', 'game_turns', type_="Check")
+    op.drop_constraint('ck_game_turns_state_inrange', 'game_turns', type_="check")
     op.create_check_constraint(
         'ck_game_turns_state_inrange',
         'game_turns',
         "state IN ('AwaitingAction', 'Completed', 'Aborted')"
     )
-    op.drop_constraint('ck_game_turns_main_card_source_valid', 'game_turns', type_="Check")
-    op.drop_constraint('ck_game_turns_main_card_info_null_in_awaitingaction', 'game_turns', type_="Check")
-    op.drop_constraint('ck_game_turns_main_card_info_notnull_in_awaitingcarddecision', 'game_turns', type_="Check")
+    op.drop_constraint('ck_game_turns_main_card_source_valid', 'game_turns', type_="check")
+    op.drop_constraint('ck_game_turns_main_card_info_null_in_awaitingaction', 'game_turns', type_="check")
+    op.drop_constraint('ck_game_turns_main_card_info_notnull_in_awaitingcarddecision', 'game_turns', type_="check")
     op.drop_constraint('fk_game_turns_main_card_id', 'game_turns', type_='foreignkey')
     op.drop_column('game_turns', 'main_card_source')
     op.drop_column('game_turns', 'main_card_id')

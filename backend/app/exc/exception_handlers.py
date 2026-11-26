@@ -393,3 +393,16 @@ def register_exception_handlers(app: FastAPI)->None:
                 "detail": "Game turn already created" 
             }
         )
+    
+    @app.exception_handler(exceptions.DrawPileExhaustedException)
+    async def drawpile_exhausted_handle(
+        request: Request,
+        exc: exceptions.DrawPileExhaustedException
+    ):
+        return JSONResponse(
+            status_code = status.HTTP_409_CONFLICT,
+            content = {
+                "code": "DRAWPILE_EXHAUSTED",
+                "detail": "Draw already exhansted" 
+            }
+        )
