@@ -47,6 +47,7 @@ export function createRealGameState({
   if(state.remainingSeconds===0&&pollTimer==null&&timeoutAttempts===0)pollAfterDeadline();
  }
  function pollAfterDeadline(){
+  if(pollTimer!=null)return;
   if(state.view?.phase!=='InitialPeek'||state.deadlineMs==null)return;
   if(nowServer()<state.deadlineMs){
    pollTimer=setTimeoutFn(()=>{pollTimer=null;pollAfterDeadline();},Math.min(1000,Math.max(50,state.deadlineMs-nowServer())));return;
@@ -219,7 +220,7 @@ export function createRealGameState({
   state.command.unknown=false;state.outcomeUnknown=false;emit();
   return submit(state.command);
  }
- function onReturn(){if(!state.gameId)return;void refresh();if(state.wsConnected===false&&socket==null)connect();}
+ function onReturn(){if(!state.gameId)return;void (async()=>{if(await refresh()&&!socket)connect();})();}
  return {state,enter,restore,refresh,loadPrivate,peek:position=>runCommand('peek',position),
   complete:()=>runCommand('end'),retry,reset,onReturn,clearPrivate};
 }
