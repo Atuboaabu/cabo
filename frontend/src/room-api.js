@@ -53,7 +53,9 @@ const isObject=value=>value!==null&&typeof value==='object'&&!Array.isArray(valu
 const isString=value=>typeof value==='string';
 const isUUID=value=>isString(value)&&UUID.test(value);
 function validResponse(data,kind) {
+  if(kind==='current'&&data===null)return true;
   if(!isObject(data))return false;
+  if(kind==='current'&&!['Lobby','Playing'].includes(data.state))return false;
   if(kind==='ready')return isUUID(data.account_id)&&typeof data.is_ready==='boolean';
   if(kind==='start')return isUUID(data.id)&&isUUID(data.room_id)&&isString(data.state)&&isString(data.started_at);
   if(!isUUID(data.id)||!isString(data.room_code)||!isUUID(data.host_account_id)||!isString(data.state))return false;
@@ -113,6 +115,9 @@ export function createRoomApi({baseUrl=getAuthApiBaseUrl(),fetchImpl=globalThis.
     },
     joinRoom(roomCode) {
       return request('/rooms/join','POST',200,'room',{room_code:roomCode});
+    },
+    getCurrentRoom() {
+      return request('/rooms/current','GET',200,'current');
     },
     getRoom(id) {
       return request('/rooms/'+roomId(id),'GET',200,'view');

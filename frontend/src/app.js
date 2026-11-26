@@ -77,6 +77,7 @@ function shell(inner,cls=''){
 }
 function realRoomPanel(){
  const room=realRooms.state,waiting=!!room.pending;
+ if(!room.currentConfirmed){return '<section class="real-room-area"><h2>正在确认当前房间</h2><article class="paper-card"><p role="status">'+esc(room.error||'正在向服务器查询当前账号所在房间…')+'</p><p>确认前暂不可创建或加入房间。</p><button type="button" class="outline" data-action="realRoomRecheck" '+(waiting?'disabled':'')+'>重新查询当前房间</button></article></section>';}
  const error=room.error?'<p class="real-room-feedback" data-tone="error" role="alert">'+esc(room.error)+'</p>':'';
  const showPending=waiting&&!['ready','kick','leave','disband','start'].includes(room.pending)&&!(room.pending==='read'&&room.quietRead);
  const pending=showPending?'<p class="real-room-feedback" data-tone="info" role="status">正在'+({create:'创建房间',join:'加入房间',read:'同步服务器房间信息'}[room.pending]||'处理房间请求')+'…</p>':'';
@@ -98,7 +99,7 @@ function realRoomPanel(){
    :'<article class="paper-card"><p>服务器尚未确认房间访问权限，目前不展示成员。</p><p class="hint">如查询失败，请点击「刷新房间」。网络错误并不代表房间已解散。</p></article>')+'</section>';
  }
  return '<section class="real-room-area"><h2>真实房间大厅</h2>'+pending+error
- +(room.outcomeUnknown?'<article class="paper-card"><h3>操作结果尚不能确认</h3><p>请求可能已在服务器完成，请勿直接重复创建或加入。</p><p>可以重新验证登录状态。但后端尚无“查询当前账号所在房间”接口；创建请求未返回 ID 时，前端无法自动找到房间。</p><button type="button" class="outline" data-action="realRoomRecheck">重新验证登录状态</button></article>'
+ +(room.outcomeUnknown?'<article class="paper-card"><h3>操作结果尚不能确认</h3><p>请求可能已在服务器完成，请勿直接重复创建或加入。</p><p>请重新查询当前账号所在房间，确认上次操作结果。</p><button type="button" class="outline" data-action="realRoomRecheck">重新查询当前房间</button></article>'
  :'<div class="lobby-grid"><article class="paper-card"><div class="card-symbol">♤</div><h3>创建房间</h3><p>通过真实账号向服务器创建房间。</p><button type="button" class="primary full" data-action="realRoomCreate" '+(waiting?'disabled':'')+'>创建房间</button></article><article class="paper-card"><div class="card-symbol">♧</div><h3>加入房间</h3><form id="real-room-join-form"><label>六位房间码<input name="roomCode" maxlength="6" minlength="6" required autocomplete="off" spellcheck="false" autocapitalize="characters" placeholder="例如 ABC234" value="'+esc(room.joinCode)+'" '+(waiting?'disabled':'')+'></label><button type="submit" class="primary full" '+(waiting?'disabled':'')+'>加入房间</button></form></article></div>')
  +'</section>';
 }
@@ -268,7 +269,7 @@ async function send(command,payload={}){
 }
 // HttpOnly Cookie remains browser-managed; only public Account fields live here.
 async function restoreRealSession({skipRoomRestore=false}={}){
- realRooms.pauseNotifications();realGames.reset({keepLocator:true});
+ realRooms.pauseNotifications();realGames.reset({keepLocator:true});realRooms.reset({keepLocator:true});
  realAuthState='checking';render();
  try{
   const account=await createAuthApi().getMe();
@@ -277,7 +278,7 @@ async function restoreRealSession({skipRoomRestore=false}={}){
   }
   realAccount=account;realAuthState='authenticated';realAuthError='';screen='real-account';
   if(!skipRoomRestore)await realRooms.restore();
-   if(!skipRoomRestore&&screen!=='real-game'&&!realRooms.state.view&&await realGames.restore())screen='real-game';
+   if(!skipRoomRestore&&realRooms.state.currentConfirmed&&screen!=='real-game')realGames.reset();
  }catch(error){
   realAccount=null;screen='auth';authMode='login';
   if(error.status===401){
@@ -305,7 +306,7 @@ async function submitRealLogin(form,data){
   screen='real-account';
   notice='';
   await realRooms.restore();
-  if(screen!=='real-game'&&!realRooms.state.view&&await realGames.restore())screen='real-game';
+  if(realRooms.state.currentConfirmed&&screen!=='real-game')realGames.reset();
   render();
  }catch(error){
   if(form.isConnected)showFormFeedback(feedback,error.message||'登录失败，请稍后再试。','error');
@@ -455,7 +456,7 @@ root.addEventListener('click',e=>{
  if(a==='realLogout'){logoutRealSession();return;}
  if(a==='realRoomCreate'&&realAuthState==='authenticated'&&screen==='real-account'){realRooms.createRoom();return;}
  if(a==='realRoomRefresh'&&realAuthState==='authenticated'&&screen==='real-account'){realRooms.refresh();return;}
- if(a==='realRoomRecheck'&&realAuthState==='authenticated'&&screen==='real-account'){restoreRealSession({skipRoomRestore:true});return;}
+ if(a==='realRoomRecheck'&&realAuthState==='authenticated'&&screen==='real-account'){void realRooms.restore();return;}
  if(a==='realRoomCancel'){dismissRealRoomDialog();return;}
  if(a==='realRoomApprove'){approveRealRoom();return;}
  if(a==='realRoomReady'&&realAuthState==='authenticated'&&screen==='real-account'){
@@ -549,7 +550,7 @@ if(typeof document.addEventListener==='function'){
  });
 }
 window.addEventListener('pagehide',()=>{realRooms.pauseNotifications();realGames.reset({keepLocator:true});});
-window.addEventListener('online',()=>{if(screen==='real-game')realGames.onReturn();});
+window.addEventListener('online',()=>{if(screen==='real-game')realGames.onReturn();else if(screen==='real-account'&&realAuthState==='authenticated')realRooms.verifyOnReturn();});
 window.addEventListener('pageshow',e=>{if(e.persisted)restoreRealSession();});
 window.addEventListener('keydown',e=>{if(!['real-account','real-game'].includes(screen)&&e.altKey&&e.shiftKey&&e.key.toLowerCase()==='m'){e.preventDefault();confirm('模拟新设备接管','旧连接会停止接受受保护操作。','takeover');}});
 render();
