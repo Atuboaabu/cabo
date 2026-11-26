@@ -10,10 +10,11 @@ export function createRealGameState({
  setIntervalFn=globalThis.setInterval,clearIntervalFn=globalThis.clearInterval
 }={}){
  const state={gameId:null,view:null,privateCards:new Map(),acceptedPositions:new Set(),remaining:2,loading:false,
-  error:'',wsConnected:false,command:null,outcomeUnknown:false,deadlineMs:null,remainingSeconds:null,peekAllowed:false};
+  error:'',wsConnected:false,command:null,outcomeUnknown:false,deadlineMs:null,remainingSeconds:null,peekAllowed:false,
+  turnDeadlineMs:null,turnRemainingSeconds:null};
  let generation=0,socket=null,pollTimer=null,clockTimer=null,reconnectTimer=null,reconnectAttempt=0;
  let queued=false,reading=false,privateRequest=0,timeoutAttempts=0,offsetMs=0,expectedRoomId=null,endedLocally=false,expired=false,deadlineTimer=null,handshakeTimer=null,highestRevision=-1;
- const emit=()=>{state.peekAllowed=!!inWindow();onChange(state);};
+ const emit=(options)=>{state.peekAllowed=!!inWindow();onChange(state,options);};
  const save=id=>{try{id?storage?.setItem(KEY,id):storage?.removeItem(KEY);}catch{}};
  const stored=()=>{try{const id=storage?.getItem(KEY);return UUID.test(id||'')?id:null;}catch{return null;}};
  const clearPrivate=()=>{state.privateCards.clear();state.remaining=0;privateRequest++;};
@@ -33,7 +34,7 @@ export function createRealGameState({
   generation++;cancelTimers();socket?.close();socket=null;
   clearPrivate();state.acceptedPositions.clear();state.view=null;state.loading=false;state.error='';
   state.wsConnected=false;state.command=null;state.outcomeUnknown=false;state.deadlineMs=null;
-  state.remainingSeconds=null;queued=false;reading=false;timeoutAttempts=0;reconnectAttempt=0;
+  state.remainingSeconds=null;state.turnDeadlineMs=null;state.turnRemainingSeconds=null;queued=false;reading=false;timeoutAttempts=0;reconnectAttempt=0;
   expectedRoomId=null;endedLocally=false;expired=false;highestRevision=-1;
   if(!keepLocator){state.gameId=null;save(null);}emit();
  }
@@ -43,12 +44,23 @@ export function createRealGameState({
   offsetMs=Date.parse(serverTime)-Date.now()+Math.max(250,rttMs);
  }
  function updateClock(){
-  if(!state.view||state.view.phase!=='InitialPeek')return;
-  state.remainingSeconds=Math.max(0,Math.ceil((state.deadlineMs-nowServer())/1000));
-  if(nowServer()>=state.deadlineMs)expired=true;
-  if(!inWindow())clearPrivate();
-  emit();
-  if(expired&&pollTimer==null&&timeoutAttempts===0)pollAfterDeadline();
+  if(!state.view)return;
+  if(state.view.phase==='InitialPeek'){
+   const wasAllowed=state.peekAllowed;
+   state.remainingSeconds=Math.max(0,Math.ceil((state.deadlineMs-nowServer())/1000));
+   if(nowServer()>=state.deadlineMs)expired=true;
+   if(!inWindow())clearPrivate();
+   // A normal tick only changes the clock text; a full redraw would drop
+   // keyboard focus and repeatedly rebuild the live action panel.
+   emit(wasAllowed===!!inWindow()?{tick:true}:undefined);
+   if(expired&&pollTimer==null&&timeoutAttempts===0)pollAfterDeadline();
+   return;
+  }
+  if(state.view.phase!=='PlayerTurn'||state.turnDeadlineMs==null)return;
+  const remaining=Math.max(0,Math.ceil((state.turnDeadlineMs-nowServer())/1000));
+  if(remaining===state.turnRemainingSeconds)return;
+  state.turnRemainingSeconds=remaining;
+  emit({tick:true});
  }
  function pollAfterDeadline(){
   if(pollTimer!=null)return;
@@ -124,6 +136,7 @@ export function createRealGameState({
    adjustClock(v.server_time,Date.now()-startedAt);
    state.view=v;state.error='';state.loading=false;
    if(v.phase==='InitialPeek'){
+    state.turnDeadlineMs=null;state.turnRemainingSeconds=null;
     state.deadlineMs=Date.parse(v.initial_peek_deadline_at);
     state.remainingSeconds=Math.max(0,Math.ceil((state.deadlineMs-nowServer())/1000));
     const me=v.players.find(p=>p.account_id===getAccountId());
@@ -142,7 +155,10 @@ export function createRealGameState({
    }else{
     clearPrivate();state.acceptedPositions.clear();state.deadlineMs=null;state.remainingSeconds=null;
     if(deadlineTimer!=null)clearTimeoutFn(deadlineTimer);deadlineTimer=null;
-    if(clockTimer!=null)clearIntervalFn(clockTimer);clockTimer=null;
+    const turnDeadline=Date.parse(v.active_turn?.deadline_at||'');
+    state.turnDeadlineMs=Number.isFinite(turnDeadline)?turnDeadline:null;
+    state.turnRemainingSeconds=state.turnDeadlineMs==null?null:Math.max(0,Math.ceil((state.turnDeadlineMs-nowServer())/1000));
+    if(v.phase==='PlayerTurn'&&clockTimer==null)clockTimer=setIntervalFn(updateClock,1000);
     if(pollTimer!=null)clearTimeoutFn(pollTimer);pollTimer=null;
    }
    emit();

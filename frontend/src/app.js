@@ -8,7 +8,7 @@ import { createRealRoomState } from './real-room-state.js';
 import { createGameApi } from './game-api.js';
 import { createGameSocket } from './game-ws.js';
 import { createRealGameState } from './real-game-state.js';
-import { realGameMarkup } from './real-game-page.js';
+import { realGameMarkup, timeText } from './real-game-page.js';
 
 const root=document.querySelector('#app');
 let view,screen='auth',authMode='login',notice='',busy=false,selected=[],modal=null,request=0;
@@ -16,14 +16,111 @@ let verificationCooldownUntil=0;
 let verificationRequestPending=false;
 // Real cookie-auth state: public Account only, never copied into MockGateway.
 let realAuthState='checking', realAccount=null, realAuthError='', realBusy=false;
-let realRoomConfirmation=null;
+let realRoomConfirmation=null, realRoomDialogReturnFocus=null;
+let activeDialog=null;
+const DIALOG_FOCUSABLE='button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+function dialogFocusables(node){return [...node.querySelectorAll(DIALOG_FOCUSABLE)];}
+function restoreDialogFocus(target){
+ if(target?.isConnected){target.focus({preventScroll:true});return;}
+ const action=target?.dataset?.action;
+ const match=action?[...root.querySelectorAll('[data-action]')].find(el=>el.dataset.action===action):null;
+ if(match){match.focus({preventScroll:true});return;}
+ const fallback=root.querySelector('main h1,main h2');
+ if(fallback){fallback.setAttribute('tabindex','-1');fallback.focus({preventScroll:true});}
+}
+function activateDialog(node,onClose,returnTarget=document.activeElement){
+ if(activeDialog?.node===node){activeDialog.onClose=onClose;return;}
+ if(activeDialog)deactivateDialog({restore:false});
+ node.setAttribute('tabindex','-1');
+ activeDialog={node,onClose,returnTarget:returnTarget||document.activeElement};
+ const target=node.querySelector('[data-modal-cancel]')||dialogFocusables(node)[0]||node;
+ target.focus({preventScroll:true});
+}
+function deactivateDialog({restore=true}={}){
+ if(!activeDialog)return;
+ const {returnTarget}=activeDialog;
+ activeDialog=null;
+ if(restore)restoreDialogFocus(returnTarget);
+}
+function closeMockDialog(){
+ if(!modal)return;
+ modal=null;render();deactivateDialog();
+}
+function syncOpenDialog(){
+ const node=root.querySelector('[data-real-room-dialog] .modal,[data-mock-dialog] .modal');
+ if(!node)return;
+ if(activeDialog?.node===node)return;
+ const real=!!node.closest('[data-real-room-dialog]');
+ activateDialog(node,real?()=>dismissRealRoomDialog():closeMockDialog,
+  real?realRoomDialogReturnFocus:modal?.returnTarget);
+}
+document.addEventListener('keydown',e=>{
+ if(!activeDialog)return;
+ if(!activeDialog.node.isConnected){activeDialog=null;return;}
+ if(e.key==='Escape'){e.preventDefault();e.stopPropagation();activeDialog.onClose();return;}
+ if(e.key!=='Tab')return;
+ const items=dialogFocusables(activeDialog.node);
+ if(!items.length){e.preventDefault();activeDialog.node.focus();return;}
+ const first=items[0],last=items[items.length-1],current=document.activeElement;
+ if(e.shiftKey){
+  if(current===first||!activeDialog.node.contains(current)){e.preventDefault();last.focus();}
+ }else if(current===last||!activeDialog.node.contains(current)){
+  e.preventDefault();first.focus();
+ }
+},true);
+root.addEventListener('click',e=>{
+ if(activeDialog&&e.target===activeDialog.node.parentElement){
+  e.preventDefault();activeDialog.onClose();
+ }
+},true);
+function updateRealGameClock(state){
+ if(screen!=='real-game'||realAuthState!=='authenticated')return;
+ const node=root.querySelector('[data-real-game-timer]');
+ if(!node)return;
+ const phase=state.view?.phase;
+ const seconds=phase==='InitialPeek'?state.remainingSeconds:phase==='PlayerTurn'?state.turnRemainingSeconds:null;
+ if(seconds==null)return;
+ const text='⏱ '+timeText(seconds);
+ if(node.textContent!==text)node.textContent=text;
+}
+async function copyRealRoomCode(button){
+ const code=root.querySelector('.real-room-code')?.textContent?.trim()||'';
+ if(!code)return;
+ let copied=false,selected=false;
+ try{
+  if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(code);copied=true;}
+ }catch{/* Permission denied: fall through to selecting the visible code. */}
+ if(!copied){
+  try{
+   const node=root.querySelector('.real-room-code');
+   const range=document.createRange();
+   range.selectNodeContents(node);
+   const selection=window.getSelection();
+   selection.removeAllRanges();selection.addRange(range);
+   selected=true;
+  }catch{/* Selection is an optional manual-copy fallback. */}
+ }
+ const status=root.querySelector('[data-copy-status]');
+ if(status){
+  status.textContent=copied?'房间码已复制。':selected?'复制未获授权，已选中房间码，请手动复制。':'复制失败，请手动选择房间码。';
+  status.dataset.tone=copied?'success':'error';
+ }
+ if(copied&&button.isConnected){
+  const original=button.textContent;
+  button.textContent='已复制';
+  setTimeout(()=>{if(button.isConnected&&button.textContent==='已复制')button.textContent=original;},1800);
+ }
+}
 let roomStorage=null;
 try{roomStorage=window.sessionStorage;}catch{/* optional navigation storage */}
 const realGames=createRealGameState({
  api:createGameApi(),storage:roomStorage,
  createSocket:options=>createGameSocket(options),
  getAccountId:()=>realAccount?.id,
- onChange:()=>{if(screen==='real-game'&&realAuthState==='authenticated')render();},
+ onChange:(state,options)=>{
+  if(options?.tick){updateRealGameClock(state);return;}
+  if(screen==='real-game'&&realAuthState==='authenticated')render();
+ },
  onUnauthorized:()=>restoreRealSession({skipRoomRestore:true})
 });
 const enterRealGame=(id,roomId)=>{
@@ -51,29 +148,34 @@ const realRooms=createRealRoomState({
  onStarted:started=>enterRealGame(started.id,started.room_id)
 });
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const roomStateLabel=state=>({Lobby:'等待开始',Playing:'游戏进行中'}[state]||state);
 const btn=(label,action,kind='outline',disabled=false)=>'<button type="button" class="'+kind+'" data-action="'+esc(action)+'" '+(disabled||busy?'disabled':'')+'>'+esc(label)+'</button>';
 const actions=()=>new Set(view.game?.legalActions||[]);
 const nav=x=>{screen=x;selected=[];render();};
 function realRoomDialogMarkup(){
  if(!realRoomConfirmation)return '';
- return '<div class="veil" data-real-room-dialog><section class="modal" role="dialog" aria-modal="true" aria-labelledby="real-room-modal-title"><h2 id="real-room-modal-title">'+esc(realRoomConfirmation.title)+'</h2><p>'+esc(realRoomConfirmation.message)+'</p><div class="button-row"><button type="button" class="outline" data-action="realRoomCancel">取消</button><button type="button" class="'+(realRoomConfirmation.danger?'danger':'primary')+'" data-action="realRoomApprove">确认</button></div></section></div>';
+ return '<div class="veil" data-real-room-dialog><section class="modal" role="dialog" aria-modal="true" aria-labelledby="real-room-modal-title" aria-describedby="real-room-modal-message" tabindex="-1"><h2 id="real-room-modal-title">'+esc(realRoomConfirmation.title)+'</h2><p id="real-room-modal-message">'+esc(realRoomConfirmation.message)+'</p><div class="button-row"><button type="button" class="outline" data-action="realRoomCancel" data-modal-cancel>取消</button><button type="button" class="'+(realRoomConfirmation.danger?'danger':'primary')+'" data-action="realRoomApprove">确认</button></div></section></div>';
 }
-function showRealRoomDialog(){
+function showRealRoomDialog(returnTarget){
+ realRoomDialogReturnFocus=returnTarget||document.activeElement;
  const shell=root.querySelector('.app-shell');
  if(shell?.insertAdjacentHTML){
   shell.insertAdjacentHTML('beforeend',realRoomDialogMarkup());
+  syncOpenDialog();
  }else render();
 }
-function dismissRealRoomDialog(){
+function dismissRealRoomDialog({restore=true}={}){
  realRoomConfirmation=null;
  const modalNode=root.querySelector('[data-real-room-dialog]');
  if(modalNode?.remove)modalNode.remove();
- else render();
+ else if(screen==='real-account')render();
+ deactivateDialog({restore});
+ realRoomDialogReturnFocus=null;
 }
 function shell(inner,cls=''){
  // Mock shell controls must never appear on the real account/Room page.
  const room=['real-account','real-game'].includes(screen)?null:view.room, account=['real-account','real-game'].includes(screen)?null:view.account;
- return '<div class="app-shell"><header class="topbar"><div class="brand"><span class="brand-icon">♤</span>cabo'+(room?'<span class="room-chip">房间 '+esc(room.id)+'</span>':'')+'</div><div class="top-actions"><span class="mock-tag">'+(screen==='real-account'?'真实账号 · FastAPI':screen==='real-game'?'真实游戏 · FastAPI':screen==='auth'&&(realAuthState==='checking'||realAuthState==='unavailable')?'认证 · FastAPI':screen==='auth'&&authMode==='login'?'登录 · FastAPI':screen==='auth'&&(authMode==='register'||authMode==='registered')?'注册 · FastAPI':'◈ MOCK · 受限演示')+'</span>'+(account?btn('当前房间','lobby','small quiet')+btn('设置','settings','small quiet')+btn('退出','logout','small quiet'):'')+( ['real-account','real-game'].includes(screen)?'':'<span class="connection '+esc(view.connection)+'">● '+({connected:'已连接',disconnected:'已断线','taken-over':'连接已被接管'}[view.connection]||'未连接')+'</span>')+'</div></header>'+(notice?'<div class="notice '+(notice.startsWith('✕')?'error':notice.startsWith('✓')?'success':'')+'" role="'+(notice.startsWith('✕')?'alert':'status')+'">'+esc(notice)+btn('×','dismiss','close')+'</div>':'')+'<main class="main '+cls+'">'+inner+'</main>'+(account?'<aside class="qa-strip" aria-label="Mock 场景"><strong>演示场景</strong>'+['disconnect','reconnect','takeover','reclaim','expireSession'].map((a,i)=>btn(['断线','重连','新设备接管','重新接管','会话过期'][i],a,'small outline')).join('')+'</aside>':'')+'<footer class="footer">一张圆桌，一起 CABO。</footer>'+(modal?'<div class="veil"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><h2 id="modal-title">'+esc(modal.title)+'</h2><p>'+esc(modal.message)+'</p><div class="button-row">'+btn('取消','cancelModal')+btn('确认','confirmModal',modal.danger?'danger':'primary')+'</div></section></div>':'')+(screen==='real-account'?realRoomDialogMarkup():'')+'</div>';
+ return '<div class="app-shell"><header class="topbar"><div class="brand"><span class="brand-icon">♤</span>cabo'+(room?'<span class="room-chip">房间 '+esc(room.id)+'</span>':'')+'</div><div class="top-actions"><span class="mock-tag">'+(screen==='real-account'?'真实账号':screen==='real-game'?'真实游戏':screen==='auth'&&(realAuthState==='checking'||realAuthState==='unavailable')?'账号认证':screen==='auth'&&authMode==='login'?'账号登录':screen==='auth'&&(authMode==='register'||authMode==='registered')?'账号注册':'◈ MOCK · 受限演示')+'</span>'+(account?btn('当前房间','lobby','small quiet')+btn('设置','settings','small quiet')+btn('退出','logout','small quiet'):'')+( ['real-account','real-game','auth'].includes(screen)?'':'<span class="connection '+esc(view.connection)+'">● '+({connected:'已连接',disconnected:'已断线','taken-over':'连接已被接管'}[view.connection]||'未连接')+'</span>')+'</div></header>'+(notice?'<div class="notice '+(notice.startsWith('✕')?'error':notice.startsWith('✓')?'success':'')+'" role="'+(notice.startsWith('✕')?'alert':'status')+'">'+esc(notice)+btn('×','dismiss','close')+'</div>':'')+'<main class="main '+cls+'">'+inner+'</main>'+(account?'<aside class="qa-strip" aria-label="Mock 场景"><strong>演示场景</strong>'+['disconnect','reconnect','takeover','reclaim','expireSession'].map((a,i)=>btn(['断线','重连','新设备接管','重新接管','会话过期'][i],a,'small outline')).join('')+'</aside>':'')+'<footer class="footer">一张圆桌，一起 CABO。</footer>'+(modal?'<div class="veil" data-mock-dialog><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-describedby="modal-message" tabindex="-1"><h2 id="modal-title">'+esc(modal.title)+'</h2><p id="modal-message">'+esc(modal.message)+'</p><div class="button-row"><button type="button" class="outline" data-action="cancelModal" data-modal-cancel>取消</button><button type="button" class="'+(modal.danger?'danger':'primary')+'" data-action="confirmModal">确认</button></div></section></div>':'')+(screen==='real-account'?realRoomDialogMarkup():'')+'</div>';
 }
 function realRoomPanel(){
  const room=realRooms.state,waiting=!!room.pending;
@@ -87,18 +189,27 @@ function realRoomPanel(){
   const me=r?.members.find(m=>m.account_id===realAccount.id);
   const lobby=r?.state==='Lobby'&&!!me;
   const locked=waiting||room.stale||room.outcomeUnknown||realBusy;
+  const startReason=!lobby||!me.is_host?null
+   :waiting?'正在同步房间状态，完成后可以开始游戏。'
+   :room.outcomeUnknown?'上次操作结果尚未确认，请先重新查询房间。'
+   :room.stale?'房间信息尚未确认，请刷新房间后再开始。'
+   :realBusy?'正在处理其他请求，完成后可以开始游戏。'
+   :members.length<2?'至少需要 2 名玩家才能开始游戏。'
+   :members.some(member=>!member.is_host&&!member.is_ready)?'所有其他玩家准备后才能开始游戏。'
+   :null;
+  const startReasonMarkup=lobby&&me.is_host&&startReason?'<p class="hint real-start-reason" id="real-start-reason" role="status">'+esc(startReason)+'</p>':'';
   const lobbyActions=lobby?'<div class="real-lobby-actions">'
    +(!me.is_host?'<button type="button" class="primary" data-action="realRoomReady" '+(locked?'disabled':'')+'>'+(me.is_ready?'取消准备':'准备')+'</button>':'')
    +'<button type="button" class="outline" data-action="realRoomLeave" '+(locked?'disabled':'')+'>离开房间</button>'
-   +(me.is_host?'<button type="button" class="primary" data-action="realRoomStart" '+(locked||!realRooms.allowedMutation('start')?'disabled':'')+'>开始游戏</button><button type="button" class="danger" data-action="realRoomDisband" '+(locked?'disabled':'')+'>解散房间</button>':'')
+   +(me.is_host?'<button type="button" class="primary" data-action="realRoomStart" '+(lobby&&!locked&&realRooms.allowedMutation('start')?'':'disabled'+(startReason?' aria-describedby="real-start-reason"':''))+'>开始游戏</button><button type="button" class="danger" data-action="realRoomDisband" '+(locked?'disabled':'')+'>解散房间</button>':'')
    +'</div>':'';
-  return '<section class="real-room-area"><div class="section-heading"><div><span class="eyebrow">REAL ROOM · FASTAPI</span><h2>真实房间</h2></div><button type="button" class="outline" data-action="realRoomRefresh" '+(waiting?'disabled':'')+'>刷新房间</button></div>'
-   +pending+error+(r?'<article class="paper-card real-room-card"><div class="room-summary"><div><span class="eyebrow">房间码</span><strong class="real-room-code">'+esc(r.room_code)+'</strong></div><div><span>房间状态</span><strong>'+esc(r.state)+'</strong></div><div><span>成员人数</span><strong>'+members.length+' / 4</strong></div></div><p class="hint">房主账号：'+esc(r.host_account_id)+'</p>'+(room.stale?'<p class="real-room-feedback" data-tone="info" role="status">这是上次确认的房间信息，请刷新后核实最新状态。</p>':'')
-   +(r.state==='Playing'?'<p class="real-room-feedback" role="status" data-tone="info"><strong>游戏已开始。</strong> '+(knownGame?'已获得 GameSession ID，可进入游戏。':'尚未取得有效 GameSession ID，请刷新房间。')+'</p>'+(knownGame?'<button type="button" class="primary" data-action="realGameResume">进入真实游戏</button>':''):'')
-   +'<h3>成员与座位</h3><div class="member-list">'+members.map(m=>'<div class="member" data-room-member="'+esc(m.account_id)+'"><div class="avatar">'+esc(m.username[0]||'?')+'</div><div><strong>'+esc(m.username)+'</strong> '+(m.account_id===realAccount.id?'<span class="gold-chip">你</span>':'')+'<small>座位 '+esc(m.seat_index)+' · '+esc(m.account_id)+'</small></div><div class="member-meta">'+(m.is_host?'<span class="gold-chip">房主</span>':'')+'<span class="'+(m.is_ready?'ready':'unready')+'">'+(m.is_ready?'✓ 已准备':'○ 未准备')+'</span>'+(lobby&&me.is_host&&m.account_id!==me.account_id&&!m.is_host?'<button type="button" class="small outline" data-action="realRoomKick:'+esc(m.account_id)+'" '+(locked?'disabled':'')+'>踢出</button>':'')+'</div></div>').join('')+'</div>'+lobbyActions+'</article>'
+  return '<section class="real-room-area"><div class="section-heading"><div><span class="eyebrow">房间</span><h2>当前房间</h2></div><button type="button" class="outline" data-action="realRoomRefresh" '+(waiting?'disabled':'')+'>刷新房间</button></div>'
+   +pending+error+(r?'<article class="paper-card real-room-card"><div class="room-summary"><div><span class="eyebrow">房间码</span><div class="room-code-row"><strong class="real-room-code">'+esc(r.room_code)+'</strong><button type="button" class="outline real-room-copy" data-action="realRoomCopy" '+(waiting?'disabled':'')+'>复制房间码</button></div><span class="copy-feedback" data-copy-status role="status" aria-live="polite"></span></div><div><span>房间状态</span><strong>'+esc(roomStateLabel(r.state))+'</strong></div><div><span>成员人数</span><strong>'+members.length+' / 4</strong></div></div><p class="hint">房主：'+esc(members.find(m=>m.is_host)?.username||'—')+'</p>'+(room.stale?'<p class="real-room-feedback" data-tone="info" role="status">这是上次确认的房间信息，请刷新后核实最新状态。</p>':'')
+   +(r.state==='Playing'?'<p class="real-room-feedback" role="status" data-tone="info"><strong>游戏已开始。</strong> '+(knownGame?'游戏信息已同步，可进入游戏。':'游戏信息尚未同步，请刷新房间。')+'</p>'+(knownGame?'<button type="button" class="primary" data-action="realGameResume">进入真实游戏</button>':''):'')
+   +'<h3>成员与座位</h3><div class="member-list">'+members.map(m=>'<div class="member" data-room-member="'+esc(m.account_id)+'"><div class="avatar">'+esc(m.username[0]||'?')+'</div><div><strong>'+esc(m.username)+'</strong> '+(m.account_id===realAccount.id?'<span class="gold-chip">你</span>':'')+'<small>座位 '+esc(m.seat_index+1)+'</small></div><div class="member-meta">'+(m.is_host?'<span class="gold-chip">房主</span>':'')+'<span class="'+(m.is_ready?'ready':'unready')+'">'+(m.is_ready?'✓ 已准备':'○ 未准备')+'</span>'+(lobby&&me.is_host&&m.account_id!==me.account_id&&!m.is_host?'<button type="button" class="small outline" data-action="realRoomKick:'+esc(m.account_id)+'" '+(locked?'disabled':'')+'>踢出</button>':'')+'</div></div>').join('')+'</div>'+lobbyActions+startReasonMarkup+'</article>'
    :'<article class="paper-card"><p>服务器尚未确认房间访问权限，目前不展示成员。</p><p class="hint">如查询失败，请点击「刷新房间」。网络错误并不代表房间已解散。</p></article>')+'</section>';
  }
- return '<section class="real-room-area"><h2>真实房间大厅</h2>'+pending+error
+ return '<section class="real-room-area"><h2>房间大厅</h2>'+pending+error
  +(room.outcomeUnknown?'<article class="paper-card"><h3>操作结果尚不能确认</h3><p>请求可能已在服务器完成，请勿直接重复创建或加入。</p><p>请重新查询当前账号所在房间，确认上次操作结果。</p><button type="button" class="outline" data-action="realRoomRecheck">重新查询当前房间</button></article>'
  :'<div class="lobby-grid"><article class="paper-card"><div class="card-symbol">♤</div><h3>创建房间</h3><p>通过真实账号向服务器创建房间。</p><button type="button" class="primary full" data-action="realRoomCreate" '+(waiting?'disabled':'')+'>创建房间</button></article><article class="paper-card"><div class="card-symbol">♧</div><h3>加入房间</h3><form id="real-room-join-form"><label>六位房间码<input name="roomCode" maxlength="6" minlength="6" required autocomplete="off" spellcheck="false" autocapitalize="characters" placeholder="例如 ABC234" value="'+esc(room.joinCode)+'" '+(waiting?'disabled':'')+'></label><button type="submit" class="primary full" '+(waiting?'disabled':'')+'>加入房间</button></form></article></div>')
  +'</section>';
@@ -165,7 +276,7 @@ function renderSilentRoom(){
  return true;
 }
 function realAccountPage(){
- return shell('<section class="dashboard real-account-page"><div class="intro"><span class="eyebrow">CABO ACCOUNT</span><h1>欢迎回来，'+esc(realAccount.username)+'</h1><p>已通过 FastAPI 登录。</p></div><article class="paper-card"><h2>账号信息</h2><div class="data-line"><span>昵称</span><strong>'+esc(realAccount.username)+'</strong></div><div class="data-line"><span>邮箱</span><strong>'+esc(realAccount.email)+'</strong></div><p class="hint">真实 Room 已支持创建、加入、准备、离开、踢出、解散及开始游戏；真实游戏支持 InitialPeek 和 PlayerTurn 最小视图。房主与其他成员均通过真实游戏接口进入对局。</p><p id="real-auth-feedback" class="hint form-feedback" '+(realAuthError?'data-tone="error" role="alert"':'role="status"')+' aria-live="polite">'+esc(realAuthError)+'</p><div class="button-row"><button type="button" class="primary" data-action="realLogout" '+(realBusy?'disabled':'')+'>退出登录</button>'+btn('进入本地 Mock 演示','enterDemo','outline',realBusy)+'</div><p class="hint">Mock 演示使用独立的本地演示身份，不会使用当前真实账号加入房间。</p></article>'+realRoomPanel()+'</section>','dashboard-main');
+ return shell('<section class="dashboard real-account-page"><div class="intro"><span class="eyebrow">账号与房间</span><h1>欢迎回来，'+esc(realAccount.username)+'</h1><p>创建或加入房间，和朋友开始一局 CABO。</p></div>'+realRoomPanel()+'<article class="paper-card account-card"><h2>账号信息</h2><div class="data-line"><span>昵称</span><strong>'+esc(realAccount.username)+'</strong></div><div class="data-line"><span>邮箱</span><strong>'+esc(realAccount.email)+'</strong></div><p id="real-auth-feedback" class="hint form-feedback" '+(realAuthError?'data-tone="error" role="alert"':'role="status"')+' aria-live="polite">'+esc(realAuthError)+'</p><div class="button-row"><button type="button" class="primary" data-action="realLogout" '+(realBusy?'disabled':'')+'>退出登录</button>'+btn('进入本地 Mock 演示','enterDemo','outline',realBusy)+'</div><p class="hint">Mock 演示使用独立的本地演示身份，不会使用当前真实账号加入房间。</p></article></section>','dashboard-main');
 }
 function realAuthLoading(){
  return shell('<section class="auth-stage"><div class="auth-panel"><h2>正在检查登录状态…</h2><p class="subtitle" role="status">正在通过服务器恢复会话。</p></div></section>','auth-main');
@@ -241,13 +352,14 @@ function render(){
  if(screen==='real-account'&&realAuthState!=='authenticated')screen='auth';
  if(screen==='real-account'){
   if(!realBusy)realRooms.resumeNotifications();
-  root.innerHTML=realAccountPage();return;
+  root.innerHTML=realAccountPage();syncOpenDialog();return;
  }
  if(!view.account&&screen!=='auth')screen='auth';
  if(screen==='game'&&!view.game)screen='lobby';
  root.innerHTML=screen==='auth'?authentication():screen==='game'?game():screen==='settings'?settings():dashboard();
+ syncOpenDialog();
 }
-function confirm(title,message,command,payload={},danger=false){modal={title,message,command,payload,danger};render();}
+function confirm(title,message,command,payload={},danger=false,returnTarget=document.activeElement){modal={title,message,command,payload,danger,returnTarget};render();}
 async function send(command,payload={}){
  if(busy)return;
  busy=true;render();
@@ -407,7 +519,7 @@ async function submitRealRegistration(form,data){
   if(codeButton?.isConnected)updateVerificationCountdown();
  }
 }
-function confirmRealRoom(action,targetAccountId){
+function confirmRealRoom(action,targetAccountId,returnTarget){
  const r=realRooms.state;
  if(!r.view||r.pending||r.stale||r.outcomeUnknown||realBusy||r.view.state!=='Lobby'||!realAccount)return;
  if(!realRooms.allowedMutation(action,targetAccountId))return;
@@ -430,11 +542,11 @@ function confirmRealRoom(action,targetAccountId){
   danger=true;
  }else return;
  realRoomConfirmation={action,targetAccountId,roomId:r.roomId,title,message,danger};
- showRealRoomDialog();
+ showRealRoomDialog(returnTarget);
 }
 function approveRealRoom(){
  const c=realRoomConfirmation;
- dismissRealRoomDialog();
+ dismissRealRoomDialog({restore:false});
  if(!c||c.roomId!==realRooms.state.roomId||realAuthState!=='authenticated'||
     screen!=='real-account'||realBusy||!realRooms.allowedMutation(c.action,c.targetAccountId))return;
  if(c.action==='leave')realRooms.leaveRoom();
@@ -458,6 +570,7 @@ root.addEventListener('click',e=>{
  if(a==='realLogout'){logoutRealSession();return;}
  if(a==='realRoomCreate'&&realAuthState==='authenticated'&&screen==='real-account'){realRooms.createRoom();return;}
  if(a==='realRoomRefresh'&&realAuthState==='authenticated'&&screen==='real-account'){realRooms.refresh();return;}
+ if(a==='realRoomCopy'&&realAuthState==='authenticated'&&screen==='real-account'){void copyRealRoomCode(el);return;}
  if(a==='realRoomRecheck'&&realAuthState==='authenticated'&&screen==='real-account'){void realRooms.restore();return;}
  if(a==='realRoomCancel'){dismissRealRoomDialog();return;}
  if(a==='realRoomApprove'){approveRealRoom();return;}
@@ -470,22 +583,22 @@ root.addEventListener('click',e=>{
   if(!realBusy&&realRooms.allowedMutation('start'))realRooms.startGame();
   return;
  }
- if(a==='realRoomLeave'&&realAuthState==='authenticated'&&screen==='real-account'){confirmRealRoom('leave');return;}
- if(a==='realRoomDisband'&&realAuthState==='authenticated'&&screen==='real-account'){confirmRealRoom('disband');return;}
+ if(a==='realRoomLeave'&&realAuthState==='authenticated'&&screen==='real-account'){confirmRealRoom('leave',undefined,el);return;}
+ if(a==='realRoomDisband'&&realAuthState==='authenticated'&&screen==='real-account'){confirmRealRoom('disband',undefined,el);return;}
  if(a.startsWith('realRoomKick:')&&realAuthState==='authenticated'&&screen==='real-account'){
-  confirmRealRoom('kick',a.slice('realRoomKick:'.length));return;
+  confirmRealRoom('kick',a.slice('realRoomKick:'.length),el);return;
  }
  if(a==='dismiss'){notice='';render();return;}
- if(a==='cancelModal'){modal=null;render();return;}
- if(a==='confirmModal'){const m=modal;modal=null;send(m.command,m.payload);return;}
+ if(a==='cancelModal'){closeMockDialog();return;}
+ if(a==='confirmModal'){const m=modal;if(!m)return;modal=null;render();deactivateDialog();send(m.command,m.payload);return;}
  if(['lobby','game','settings'].includes(a)){nav(a);return;}
  if(a.startsWith('card:')){const i=Number(a.slice(5));if(view.game?.phase==='InitialReveal')send('reveal',{index:i});else{selected=selected.includes(i)?[]:[i];render();}return;}
- if(a.startsWith('kick:')){confirm('移除成员','Playing Kick 将 Aborted 当前 Game。','kick',{memberId:a.slice(5)},true);return;}
- if(a==='disband'){confirm('解散房间','关闭 Room 不可撤销；当前 Game 可能中止。','disband',{},true);return;}
- if(a==='leave'){confirm('离开房间','Leave 与注销是两项独立正式请求。','leave');return;}
- if(a==='cabo'){confirm('呼叫 CABO','将结束本次正常 Turn 并进入 FinalTurns。','cabo');return;}
- if(a==='endReveal'&&view.game?.revealCount<2){confirm('提前结束查看','剩余机会将作废，是否继续？','endReveal');return;}
- if(a==='deleteAccount'){confirm('申请注销','受限 Mock 不实际注销账号。','deleteAccount',{},true);return;}
+ if(a.startsWith('kick:')){confirm('移除成员','Playing Kick 将 Aborted 当前 Game。','kick',{memberId:a.slice(5)},true,el);return;}
+ if(a==='disband'){confirm('解散房间','关闭 Room 不可撤销；当前 Game 可能中止。','disband',{},true,el);return;}
+ if(a==='leave'){confirm('离开房间','Leave 与注销是两项独立正式请求。','leave',{},false,el);return;}
+ if(a==='cabo'){confirm('呼叫 CABO','将结束本次正常 Turn 并进入 FinalTurns。','cabo',{},false,el);return;}
+ if(a==='endReveal'&&view.game?.revealCount<2){confirm('提前结束查看','剩余机会将作废，是否继续？','endReveal',{},false,el);return;}
+ if(a==='deleteAccount'){confirm('申请注销','受限 Mock 不实际注销账号。','deleteAccount',{},true,el);return;}
  if(a==='toggleReady'){send('ready',{ready:!view.room.members.find(m=>m.id==='demo-me')?.ready});return;}
  if(a==='replace'){send('replace',{positions:[...selected]});return;}
  send(a);

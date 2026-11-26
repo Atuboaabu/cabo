@@ -102,7 +102,7 @@
 }
 
 /* Real cookie-auth dashboard: distinct from the local Mock game lobby. */
-.real-account-page .paper-card {max-width:660px;margin:0 auto}
+.real-account-page .account-card {max-width:660px;margin:32px auto 0}
 .real-account-page .button-row {flex-wrap:wrap;margin-top:18px}
 .real-account-page #real-auth-feedback:empty {display:none}
 .real-account-page #real-auth-feedback[data-tone="error"] {
@@ -169,4 +169,118 @@
  .real-table .turn-mark{font-size:8px;padding:3px 5px}
  .real-table .self-name strong{max-width:110px}
  .real-table-bottom{padding:0 8px}
+}
+
+/* WCAG contrast and real-game readability: dark ink on parchment, light ink
+   only on dark surfaces. Keep the felt/brass character of the table. */
+:root{
+ --cabo-ink-muted:#5b5444;
+ --cabo-gold-ink:#6f4f1c;
+ --cabo-ready-ink:#24613b;
+ --cabo-unready-ink:#575247;
+ --cabo-meta-ink:#5a5344;
+}
+.eyebrow{color:var(--cabo-gold-ink);font-size:12px;letter-spacing:2.4px}
+.hint,.paper-card .hint{color:var(--cabo-ink-muted)}
+.member small{color:var(--cabo-meta-ink);font-size:12px}
+.ready{color:var(--cabo-ready-ink);font-size:12px}
+.unready{color:var(--cabo-unready-ink);font-size:12px}
+.gold-chip{color:#7a531a;font-size:12px}
+.real-room-card .room-summary>div>span:not(.eyebrow){color:#6b572f}
+.game-header{
+ color:#1d3a27;
+ text-shadow:none;
+ background:linear-gradient(90deg,#f4e4c3,#dfc79c);
+ border:1px solid #c7a66d;
+ border-radius:16px;
+ padding:12px clamp(14px,2vw,22px);
+ margin-bottom:14px;
+ box-shadow:0 6px 18px #2a160c25;
+}
+.game-header .eyebrow{color:#5a421c}
+.game-header .phase-chip,.game-header .timer{color:#ffefcf}
+.game-header .real-table-toolbar{color:#1d3a27}
+.game-header .real-table-toolbar .quiet{background:#fff7e6;border-color:#b49d63;color:#23472e}
+.real-table-bottom{
+ color:#fff0cd;
+ background:#173c29e6;
+ border:1px solid #d1b17866;
+ border-radius:14px;
+ padding:10px 14px;
+ box-shadow:0 6px 20px #2a160c40;
+}
+.real-table-bottom .connection{font-size:12px}
+.turn-mark{background:#6a4b19;color:#fff3d6;border-color:#e3c389}
+.real-account-page .intro{margin-bottom:0}
+@media(max-width:560px){
+ .member small{font-size:12px}
+ .real-table-bottom{padding:10px 12px}
+}
+@media(pointer:coarse),(max-width:650px){
+ .real-room-card .member-meta button,
+ .real-table-toolbar .small,
+ .top-actions .small{min-height:44px;padding:10px 14px;font-size:13px}
+ .real-room-card .member-meta button{min-width:56px}
+}
+
+/* P2 · Room-code handoff and start readiness. */
+.real-room-card .room-code-row{display:flex;align-items:center;flex-wrap:wrap;gap:12px}
+.real-room-copy{min-height:44px;padding:7px 14px;font-size:13px;white-space:nowrap}
+.real-room-card .room-summary>div>span.copy-feedback{margin-top:2px;color:#24613b;font:600 12px/1.5 system-ui,sans-serif}
+.real-room-card .room-summary>div>span.copy-feedback:empty{display:none}
+.real-room-card .room-summary>div>span.copy-feedback[data-tone="error"]{color:#8a3c2f}
+.real-room-card .real-start-reason{
+ margin:12px 0 0;
+ padding:10px 12px;
+ border:1px solid #d8c49e;
+ border-radius:10px;
+ background:#f7efd9;
+ color:#5b4a28;
+ font:600 12px/1.6 system-ui,sans-serif;
+}
+
+/* P2 · Card affordance and a non-color confirmation mark for own peeked cards. */
+.real-table .playing-card.selectable{
+ cursor:pointer;
+ border-color:#e8cf92;
+ box-shadow:2px 4px 6px #00190f65,0 0 0 2px #e8cf9240;
+}
+.real-table .playing-card.selectable:hover{
+ transform:translateY(-6px);
+ border-color:#f6c15d;
+ box-shadow:0 8px 16px #00190f80,0 0 0 2px #f6c15d66;
+}
+.real-table .playing-card.selectable:focus-visible{outline:3px solid #ffe3a3;outline-offset:3px}
+.real-table .playing-card:disabled{cursor:default}
+.real-table .playing-card.peek-confirmed{
+ border-color:#8fbf76;
+ box-shadow:2px 4px 6px #00190f65,inset 0 0 0 2px #2d5c3a55;
+}
+.real-table .playing-card.peek-confirmed::after{
+ content:"✓";
+ position:absolute;
+ top:4px;
+ right:4px;
+ z-index:1;
+ display:grid;
+ place-items:center;
+ width:18px;
+ height:18px;
+ border:1px solid #cfe6b0;
+ border-radius:50%;
+ background:#17402b;
+ color:#fff8e3;
+ font:700 11px/1 system-ui,sans-serif;
+}
+
+@media (prefers-reduced-motion: reduce){
+ *,*::before,*::after{
+  scroll-behavior:auto!important;
+  animation-duration:.01ms!important;
+  animation-iteration-count:1!important;
+  transition-duration:.01ms!important;
+ }
+ button:hover:not(:disabled),
+ button:active:not(:disabled),
+ .playing-card.selectable:hover{transform:none}
 }
