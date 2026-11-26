@@ -10,10 +10,10 @@ export function createRealGameState({
  setIntervalFn=globalThis.setInterval,clearIntervalFn=globalThis.clearInterval
 }={}){
  const state={gameId:null,view:null,privateCards:new Map(),acceptedPositions:new Set(),remaining:2,loading:false,
-  error:'',wsConnected:false,command:null,outcomeUnknown:false,deadlineMs:null,remainingSeconds:null};
+  error:'',wsConnected:false,command:null,outcomeUnknown:false,deadlineMs:null,remainingSeconds:null,peekAllowed:false};
  let generation=0,socket=null,pollTimer=null,clockTimer=null,reconnectTimer=null,reconnectAttempt=0;
- let queued=false,reading=false,privateRequest=0,timeoutAttempts=0,offsetMs=0,expectedRoomId=null,endedLocally=false,expired=false,deadlineTimer=null;
- const emit=()=>onChange(state);
+ let queued=false,reading=false,privateRequest=0,timeoutAttempts=0,offsetMs=0,expectedRoomId=null,endedLocally=false,expired=false,deadlineTimer=null,handshakeTimer=null,highestRevision=-1;
+ const emit=()=>{state.peekAllowed=!!inWindow();onChange(state);};
  const save=id=>{try{id?storage?.setItem(KEY,id):storage?.removeItem(KEY);}catch{}};
  const stored=()=>{try{const id=storage?.getItem(KEY);return UUID.test(id||'')?id:null;}catch{return null;}};
  const clearPrivate=()=>{state.privateCards.clear();state.remaining=0;privateRequest++;};
@@ -26,14 +26,15 @@ export function createRealGameState({
   if(clockTimer!=null)clearIntervalFn(clockTimer);
   if(reconnectTimer!=null)clearTimeoutFn(reconnectTimer);
   if(deadlineTimer!=null)clearTimeoutFn(deadlineTimer);
-  pollTimer=clockTimer=reconnectTimer=deadlineTimer=null;
+  if(handshakeTimer!=null)clearTimeoutFn(handshakeTimer);
+  pollTimer=clockTimer=reconnectTimer=deadlineTimer=handshakeTimer=null;
  }
  function reset({keepLocator=false}={}){
   generation++;cancelTimers();socket?.close();socket=null;
   clearPrivate();state.acceptedPositions.clear();state.view=null;state.loading=false;state.error='';
   state.wsConnected=false;state.command=null;state.outcomeUnknown=false;state.deadlineMs=null;
   state.remainingSeconds=null;queued=false;reading=false;timeoutAttempts=0;reconnectAttempt=0;
-  expectedRoomId=null;endedLocally=false;expired=false;
+  expectedRoomId=null;endedLocally=false;expired=false;highestRevision=-1;
   if(!keepLocator){state.gameId=null;save(null);}emit();
  }
  function adjustClock(serverTime,rttMs){
@@ -66,35 +67,45 @@ export function createRealGameState({
    if(token===generation&&state.view?.phase==='InitialPeek')pollAfterDeadline();
   },delay);
  }
+ function scheduleReconnect(){
+  if(reconnectTimer!=null||!state.gameId)return;
+  const token=generation;
+  const delay=Math.min(30000,1000*2**Math.min(reconnectAttempt++,5));
+  reconnectTimer=setTimeoutFn(async()=>{
+   reconnectTimer=null;
+   if(token!==generation||!state.gameId)return;
+   if(await refresh())connect();
+   else if(token===generation&&state.gameId)scheduleReconnect();
+  },delay);
+ }
  function connect(){
-  if(!state.gameId||!state.view||socket)return;
+  if(!state.gameId||!state.view||socket||reconnectTimer!=null)return;
   const id=state.gameId,token=generation;
-  socket=createSocket({
-   onChanged:changed=>{if(token===generation&&changed.toLowerCase()===id.toLowerCase())void refresh();},
+  const current=()=>token===generation&&socket===candidate;
+  const clearHandshake=()=>{if(handshakeTimer!=null)clearTimeoutFn(handshakeTimer);handshakeTimer=null;};
+  const candidate=createSocket({
+   onChanged:changed=>{if(current()&&changed.toLowerCase()===id.toLowerCase())void refresh();},
    onOpen:opened=>{
-    if(token!==generation||opened.toLowerCase()!==id.toLowerCase())return;
-    state.wsConnected=true;reconnectAttempt=0;emit();void refresh();
+    if(!current()||opened.toLowerCase()!==id.toLowerCase())return;
+    clearHandshake();state.wsConnected=true;reconnectAttempt=0;emit();void refresh();
    },
    onClosed:closed=>{
-    if(token!==generation||closed.toLowerCase()!==id.toLowerCase())return;
-    state.wsConnected=false;socket=null;emit();void refresh();
-    if(reconnectTimer!=null)return;
-    const retry=()=>{
-     if(token!==generation||!state.gameId||!state.view)return;
-     reconnectTimer=null;
-     const delay=Math.min(30000,1000*2**Math.min(reconnectAttempt++,5));
-     reconnectTimer=setTimeoutFn(async()=>{
-      reconnectTimer=null;
-      if(token!==generation)return;
-      // A fresh authenticated GET must precede every reconnect.
-      if(await refresh())connect();
-      else retry();
-     },delay);
-    };
-    retry();
+    if(!current()||closed.toLowerCase()!==id.toLowerCase())return;
+    clearHandshake();socket=null;state.wsConnected=false;
+    clearPrivate();emit();void refresh();scheduleReconnect();
    }
   });
-  try{if(socket.connect(id)!==true){socket=null;}}catch{socket=null;}
+  socket=candidate;
+  try{
+   if(candidate.connect(id)!==true)throw Error('socket unavailable');
+   if(!state.wsConnected)handshakeTimer=setTimeoutFn(()=>{
+    if(!current())return;
+    handshakeTimer=null;socket=null;candidate.close();
+    clearPrivate();state.wsConnected=false;emit();scheduleReconnect();
+   },10000);
+  }catch{
+   socket=null;candidate.close();scheduleReconnect();
+  }
  }
  async function refresh(){
   if(!state.gameId)return false;
@@ -108,7 +119,8 @@ export function createRealGameState({
     const e=new Error('游戏、房间或当前账号身份不一致。');e.code='INVALID_RESPONSE';throw e;
    }
    expectedRoomId=v.room_id;
-   if(state.view&&v.state_revision<state.view.state_revision)return true;
+   if(v.state_revision<highestRevision)return false;
+   highestRevision=v.state_revision;
    adjustClock(v.server_time,Date.now()-startedAt);
    state.view=v;state.error='';state.loading=false;
    if(v.phase==='InitialPeek'){
@@ -126,7 +138,7 @@ export function createRealGameState({
     if(deadlineTimer!=null)clearTimeoutFn(deadlineTimer);
     if(!expired)deadlineTimer=setTimeoutFn(()=>{deadlineTimer=null;updateClock();},Math.max(0,state.deadlineMs-nowServer()));
     if(pollTimer!=null){clearTimeoutFn(pollTimer);pollTimer=null;}
-    if(state.remainingSeconds===0)pollAfterDeadline();
+    if(expired||state.remainingSeconds===0)pollAfterDeadline();
    }else{
     clearPrivate();state.acceptedPositions.clear();state.deadlineMs=null;state.remainingSeconds=null;
     if(deadlineTimer!=null)clearTimeoutFn(deadlineTimer);deadlineTimer=null;
@@ -170,7 +182,7 @@ export function createRealGameState({
  }
  async function enter(id,roomId=null){
   if(!UUID.test(id||''))return false;
-  if(state.gameId?.toLowerCase()===id.toLowerCase()&&state.view)return true;
+  if(state.gameId?.toLowerCase()===id.toLowerCase()&&state.view&&(!roomId||state.view.room_id===roomId))return true;
   reset();expectedRoomId=roomId;state.gameId=id;save(id);state.loading=true;emit();
   if(!await refresh())return false;
   connect();
@@ -183,11 +195,11 @@ export function createRealGameState({
   return enter(id);
  }
  async function runCommand(kind,position){
-  if(!state.gameId||!inWindow()||state.command)return false;
+  if(!state.gameId||!inWindow()||state.command||state.outcomeUnknown)return false;
   const me=state.view.players.find(p=>p.account_id===getAccountId());
   if(!me||me.initial_peek_completed)return false;
   if(kind==='peek'&&(state.privateCards.has(position)||state.acceptedPositions.has(position)||me.initial_peek_confirmed_positions.includes(position)||
-    me.initial_peek_confirmed_positions.length>=2||!Number.isInteger(position)||position<0||position>3))return false;
+    new Set([...me.initial_peek_confirmed_positions,...state.acceptedPositions]).size>=2||!Number.isInteger(position)||position<0||position>3))return false;
   const command={kind,position,requestId:globalThis.crypto.randomUUID(),unknown:false};
   state.command=command;state.error='';
   if(kind==='end'){endedLocally=true;clearPrivate();}
@@ -203,7 +215,7 @@ export function createRealGameState({
    if(out.status==='NotYetDetermined'){
     command.unknown=true;state.outcomeUnknown=true;state.error='结果尚未确定，请用原请求 ID 重试。';emit();return false;
    }
-   state.outcomeUnknown=false;state.command=null;
+   state.outcomeUnknown=false;
    if(out.status==='Accepted'){
     if(command.kind==='peek')state.acceptedPositions.add(command.position);
     if(command.kind==='end')clearPrivate();
@@ -215,8 +227,11 @@ export function createRealGameState({
     state.error=out.status==='IdentityConflict'?'请求 ID 与历史操作冲突。':
       '请求未被服务器接受：'+(out.reason||out.status);
    }
+   const message=state.error;
    emit();await refresh();
-   if(out.status==='Accepted'&&command.kind==='peek'&&inWindow())void loadPrivate();
+   if(token!==generation||state.command!==command)return out.status==='Accepted';
+   state.command=null;if(message)state.error=message;emit();
+   if(inWindow())void loadPrivate();
    return out.status==='Accepted';
   }catch(e){
    if(token!==generation||state.command!==command)return false;
@@ -238,6 +253,7 @@ export function createRealGameState({
   return submit(state.command);
  }
  function onReturn(){if(!state.gameId)return;updateClock();void (async()=>{if(await refresh()){if(!socket)connect();if(inWindow())void loadPrivate();}})();}
+ function sync(){return onReturn();}
  return {state,enter,restore,refresh,loadPrivate,peek:position=>runCommand('peek',position),
-  complete:()=>runCommand('end'),retry,reset,onReturn,clearPrivate,getStoredId:stored};
+  complete:()=>runCommand('end'),retry,reset,onReturn,sync,clearPrivate,getStoredId:stored};
 }
