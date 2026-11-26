@@ -164,7 +164,7 @@ class GameCard(Base):
             name="ck_game_cards_value_inrange"
         ),
         CheckConstraint(
-            "location IN ('DrawPile', 'DiscardPile', 'Hand')",
+            "location IN ('DrawPile', 'PendingAction', 'DiscardPile', 'Hand')",
             name="ck_game_cards_location_valid"
         ),
         CheckConstraint(
@@ -229,11 +229,11 @@ class GameTurn(Base):
             name="uq_game_turns_turn_number_in_game_session"
         ),
         CheckConstraint(
-            "state IN ('AwaitingAction', 'Completed', 'Aborted')",
+            "state IN ('AwaitingAction', 'AwaitingCardDecision', 'Completed', 'Aborted')",
             name="ck_game_turns_state_inrange"
         ),
         CheckConstraint(
-            "(state = 'AwaitingAction' AND ended_at IS NULL) "
+            "(state IN ('AwaitingAction', 'AwaitingCardDecision') AND ended_at IS NULL) "
             "OR "
             "(state IN ('Completed', 'Aborted') AND ended_at IS NOT NULL)",
             name="ck_game_turns_state_valid"
@@ -248,6 +248,20 @@ class GameTurn(Base):
             unique=True,
             postgresql_where=text("ended_at IS NULL")
         ),
+        CheckConstraint(
+            "(state = 'AwaitingAction' AND " \
+            "main_card_id IS NULL AND " \
+            "main_card_source IS NULL) OR " \
+            "(state <> 'AwaitingAction')",
+            name="ck_main_card_info_null_in_awitingaction"
+        ),
+        CheckConstraint(
+            "(state = 'AwaitingCardDecision' AND " \
+            "main_card_id IS NOT NULL AND " \
+            "main_card_source IS NOT NULL) OR " \
+            "(state <> 'AwaitingCardDecision')",
+            name="ck_main_card_info_notnull_in_awaitingcarddecision"
+        )
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -293,6 +307,16 @@ class GameTurn(Base):
 
     ended_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
+        nullable=True
+    )
+
+    main_card_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("game_cards.id"),
+        nullable=True
+    )
+
+    main_card_source: Mapped[str | None] = mapped_column(
+        String(20),
         nullable=True
     )
 
