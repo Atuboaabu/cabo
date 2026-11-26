@@ -258,7 +258,7 @@ class GameTurn(Base):
             "main_card_id IS NULL AND " \
             "main_card_source IS NULL) OR " \
             "(state <> 'AwaitingAction')",
-            name="ck_game_turns_main_card_info_null_in_awitingaction"
+            name="ck_game_turns_main_card_info_null_in_awaitingaction"
         ),
         CheckConstraint(
             "(state = 'AwaitingCardDecision' AND " \
