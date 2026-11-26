@@ -1,0 +1,225 @@
+/**
+ * Real Game controller. The only persisted value is a GameSession locator.
+ * Never persist or log private cards. Every restore first reauthorizes via GET.
+ */
+const KEY='cabo.lastRealGameId';
+const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export function createRealGameState({
+ api,createSocket,storage=null,getAccountId=()=>null,onChange=()=>{},onUnauthorized=()=>{},
+ setTimeoutFn=globalThis.setTimeout,clearTimeoutFn=globalThis.clearTimeout,
+ setIntervalFn=globalThis.setInterval,clearIntervalFn=globalThis.clearInterval
+}={}){
+ const state={gameId:null,view:null,privateCards:new Map(),remaining:2,loading:false,
+  error:'',wsConnected:false,command:null,outcomeUnknown:false,deadlineMs:null,remainingSeconds:null};
+ let generation=0,socket=null,pollTimer=null,clockTimer=null,reconnectTimer=null,reconnectAttempt=0;
+ let queued=false,reading=false,privateRequest=0,timeoutAttempts=0,offsetMs=0;
+ const emit=()=>onChange(state);
+ const save=id=>{try{id?storage?.setItem(KEY,id):storage?.removeItem(KEY);}catch{}};
+ const stored=()=>{try{const id=storage?.getItem(KEY);return UUID.test(id||'')?id:null;}catch{return null;}};
+ const clearPrivate=()=>{state.privateCards.clear();state.remaining=0;privateRequest++;};
+ const nowServer=()=>Date.now()+offsetMs;
+ const inWindow=()=>state.view?.state==='Playing'&&state.view.phase==='InitialPeek'&&
+  !!state.deadlineMs&&nowServer()<state.deadlineMs&&
+  !state.view.players.find(p=>p.account_id===getAccountId())?.initial_peek_completed;
+ function cancelTimers(){
+  if(pollTimer!=null)clearTimeoutFn(pollTimer);
+  if(clockTimer!=null)clearIntervalFn(clockTimer);
+  if(reconnectTimer!=null)clearTimeoutFn(reconnectTimer);
+  pollTimer=clockTimer=reconnectTimer=null;
+ }
+ function reset({keepLocator=false}={}){
+  generation++;cancelTimers();socket?.close();socket=null;
+  clearPrivate();state.view=null;state.loading=false;state.error='';
+  state.wsConnected=false;state.command=null;state.outcomeUnknown=false;state.deadlineMs=null;
+  state.remainingSeconds=null;queued=false;reading=false;timeoutAttempts=0;reconnectAttempt=0;
+  if(!keepLocator){state.gameId=null;save(null);}emit();
+ }
+ function adjustClock(serverTime){
+  // Response arrival biases the estimate toward delaying expiry, so clamp it
+  // toward early hiding with a small safety margin.
+  offsetMs=Date.parse(serverTime)-Date.now()+250;
+ }
+ function updateClock(){
+  if(!state.view||state.view.phase!=='InitialPeek')return;
+  state.remainingSeconds=Math.max(0,Math.ceil((state.deadlineMs-nowServer())/1000));
+  if(!inWindow()){if(state.privateCards.size)clearPrivate();if(state.command?.kind==='peek')state.command=null;}
+  emit();
+  if(state.remainingSeconds===0&&pollTimer==null&&timeoutAttempts===0)pollAfterDeadline();
+ }
+ function pollAfterDeadline(){
+  if(state.view?.phase!=='InitialPeek'||state.deadlineMs==null)return;
+  if(nowServer()<state.deadlineMs){
+   pollTimer=setTimeoutFn(()=>{pollTimer=null;pollAfterDeadline();},Math.min(1000,Math.max(50,state.deadlineMs-nowServer())));return;
+  }
+  clearPrivate();emit();
+  if(timeoutAttempts>=12){state.error='等待服务器超时迁移；请点击刷新游戏状态。';emit();return;}
+  const token=generation;
+  const delay=timeoutAttempts<5?1500:4000;
+  pollTimer=setTimeoutFn(async()=>{
+   pollTimer=null;if(token!==generation||state.view?.phase!=='InitialPeek')return;
+   timeoutAttempts++;
+   await refresh();
+   if(token===generation&&state.view?.phase==='InitialPeek')pollAfterDeadline();
+  },delay);
+ }
+ function connect(){
+  if(!state.gameId||!state.view||socket)return;
+  const id=state.gameId,token=generation;
+  socket=createSocket({
+   onChanged:changed=>{if(token===generation&&changed.toLowerCase()===id.toLowerCase())void refresh();},
+   onOpen:opened=>{
+    if(token!==generation||opened.toLowerCase()!==id.toLowerCase())return;
+    state.wsConnected=true;reconnectAttempt=0;emit();void refresh();
+   },
+   onClosed:closed=>{
+    if(token!==generation||closed.toLowerCase()!==id.toLowerCase())return;
+    state.wsConnected=false;socket=null;emit();void refresh();
+    if(reconnectTimer!=null)return;
+    const retry=()=>{
+     if(token!==generation||!state.gameId||!state.view)return;
+     reconnectTimer=null;
+     const delay=Math.min(30000,1000*2**Math.min(reconnectAttempt++,5));
+     reconnectTimer=setTimeoutFn(async()=>{
+      reconnectTimer=null;
+      if(token!==generation)return;
+      // A fresh authenticated GET must precede every reconnect.
+      if(await refresh())connect();
+      else retry();
+     },delay);
+    };
+    retry();
+   }
+  });
+  try{if(socket.connect(id)!==true){socket=null;}}catch{socket=null;}
+ }
+ async function refresh(){
+  if(!state.gameId)return false;
+  if(reading){queued=true;return false;}
+  reading=true;const id=state.gameId,token=generation;
+  try{
+   const v=await api.getGame(id);
+   if(token!==generation||state.gameId!==id)return false;
+   if(state.view&&v.state_revision<state.view.state_revision)return true;
+   adjustClock(v.server_time);
+   state.view=v;state.error='';state.loading=false;
+   if(v.phase==='InitialPeek'){
+    state.deadlineMs=Date.parse(v.initial_peek_deadline_at);
+    state.remainingSeconds=Math.max(0,Math.ceil((state.deadlineMs-nowServer())/1000));
+    const me=v.players.find(p=>p.account_id===getAccountId());
+    if(me?.initial_peek_completed||!inWindow())clearPrivate();
+    else{
+     for(const pos of [...state.privateCards.keys()])
+      if(!me.initial_peek_confirmed_positions.includes(pos))state.privateCards.delete(pos);
+    }
+    if(clockTimer==null)clockTimer=setIntervalFn(updateClock,1000);
+    if(pollTimer!=null){clearTimeoutFn(pollTimer);pollTimer=null;}
+    if(state.remainingSeconds===0)pollAfterDeadline();
+   }else{
+    clearPrivate();state.deadlineMs=null;state.remainingSeconds=null;
+    if(clockTimer!=null)clearIntervalFn(clockTimer);clockTimer=null;
+    if(pollTimer!=null)clearTimeoutFn(pollTimer);pollTimer=null;
+   }
+   emit();
+   return true;
+  }catch(e){
+   if(token!==generation)return false;
+   state.loading=false;
+   if([401,403,404].includes(e?.status)){
+    clearPrivate();socket?.close();socket=null;state.view=null;state.wsConnected=false;
+    if(e.status===401)onUnauthorized();
+    if(e.status===403||e.status===404){save(null);state.gameId=null;}
+   }
+   state.error=e.message||'游戏同步失败。';emit();return false;
+  }finally{
+   if(token===generation){
+    reading=false;if(queued){queued=false;void refresh();}
+   }
+  }
+ }
+ async function loadPrivate(){
+  if(!inWindow()||state.command?.kind==='end')return false;
+  const token=generation,seq=++privateRequest;
+  try{
+   const v=await api.getInitialPeekView(state.gameId);
+   if(token!==generation||seq!==privateRequest||!inWindow())return false;
+   if(v.account_id!==getAccountId()||Date.parse(v.deadline_at)!==state.deadlineMs||
+      Date.parse(v.server_time)>=state.deadlineMs){clearPrivate();emit();return false;}
+   state.privateCards=new Map(v.revealed_cards.map(c=>[c.position,c.value]));
+   state.remaining=v.remaining_peek_count;emit();return true;
+  }catch(e){
+   if(token!==generation)return false;
+   clearPrivate();
+   if(e.status===401)onUnauthorized();
+   state.error=e.message||'无法恢复私人查看结果。';emit();return false;
+  }
+ }
+ async function enter(id){
+  if(!UUID.test(id||''))return false;
+  if(state.gameId?.toLowerCase()===id.toLowerCase()&&state.view)return true;
+  reset();state.gameId=id;save(id);state.loading=true;emit();
+  if(!await refresh())return false;
+  connect();
+  if(inWindow())void loadPrivate();
+  return true;
+ }
+ async function restore(){
+  const id=stored();
+  if(!id)return false;
+  return enter(id);
+ }
+ async function runCommand(kind,position){
+  if(!state.gameId||!inWindow()||state.command)return false;
+  const me=state.view.players.find(p=>p.account_id===getAccountId());
+  if(!me||me.initial_peek_completed)return false;
+  if(kind==='peek'&&(state.privateCards.has(position)||me.initial_peek_confirmed_positions.includes(position)||
+    me.initial_peek_confirmed_positions.length>=2||!Number.isInteger(position)||position<0||position>3))return false;
+  const command={kind,position,requestId:globalThis.crypto.randomUUID(),unknown:false};
+  state.command=command;state.error='';
+  if(kind==='end')clearPrivate();
+  emit();return submit(command);
+ }
+ async function submit(command){
+  const token=generation,id=state.gameId;
+  try{
+   const out=command.kind==='peek'
+    ?await api.initialPeek(id,command.requestId,command.position)
+    :await api.completeInitialPeek(id,command.requestId);
+   if(token!==generation||state.command!==command)return false;
+   if(out.status==='NotYetDetermined'){
+    command.unknown=true;state.outcomeUnknown=true;state.error='结果尚未确定，请用原请求 ID 重试。';emit();return false;
+   }
+   state.outcomeUnknown=false;state.command=null;
+   if(out.status==='Accepted'){
+    if(command.kind==='end')clearPrivate();
+    if(command.kind==='peek'&&out.peek_result&&out.peek_result.position===command.position&&
+       Date.parse(out.peek_result.deadline_at)===state.deadlineMs&&inWindow())
+      state.privateCards.set(command.position,out.peek_result.value);
+   }else{
+    state.error=out.status==='IdentityConflict'?'请求 ID 与历史操作冲突。':
+      '请求未被服务器接受：'+(out.reason||out.status);
+   }
+   emit();await refresh();
+   if(out.status==='Accepted'&&command.kind==='peek'&&inWindow())void loadPrivate();
+   return out.status==='Accepted';
+  }catch(e){
+   if(token!==generation||state.command!==command)return false;
+   if(e.outcomeUnknown){
+    command.unknown=true;state.outcomeUnknown=true;
+    state.error='操作结果未知，请重试原请求，不要再次选择目标。';
+   }else{
+    state.command=null;state.outcomeUnknown=false;state.error=e.message||'命令失败。';
+    if([401,403,404].includes(e.status))clearPrivate();
+    if(e.status===401)onUnauthorized();
+   }
+   emit();void refresh();return false;
+  }
+ }
+ async function retry(){
+  if(!state.command?.unknown)return false;
+  state.command.unknown=false;state.outcomeUnknown=false;emit();
+  return submit(state.command);
+ }
+ function onReturn(){if(!state.gameId)return;void refresh();if(state.wsConnected===false&&socket==null)connect();}
+ return {state,enter,restore,refresh,loadPrivate,peek:position=>runCommand('peek',position),
+  complete:()=>runCommand('end'),retry,reset,onReturn,clearPrivate};
+}
