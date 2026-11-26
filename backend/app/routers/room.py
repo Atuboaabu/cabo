@@ -212,3 +212,17 @@ async def start_game(
     await room_manager.room_disconnect(room_id)
 
     return response
+
+@router.get(
+    "/current",
+    status_code=status.HTTP_200_OK,
+    response_model=(RoomView | None)
+)
+def get_current_room_info(
+    session: SessionDep,
+    user: ActiveUserDep
+):
+    return room.get_current_room(
+        session,
+        user
+    )
