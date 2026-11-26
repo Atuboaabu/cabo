@@ -249,18 +249,23 @@ class GameTurn(Base):
             postgresql_where=text("ended_at IS NULL")
         ),
         CheckConstraint(
+            "main_card_source IS NULL OR " \
+            "main_card_source IN ('DrawPile', 'DiscardPile')",
+            name="ck_game_turns_main_card_source_valid"
+        ),
+        CheckConstraint(
             "(state = 'AwaitingAction' AND " \
             "main_card_id IS NULL AND " \
             "main_card_source IS NULL) OR " \
             "(state <> 'AwaitingAction')",
-            name="ck_main_card_info_null_in_awitingaction"
+            name="ck_game_turns_main_card_info_null_in_awitingaction"
         ),
         CheckConstraint(
             "(state = 'AwaitingCardDecision' AND " \
             "main_card_id IS NOT NULL AND " \
             "main_card_source IS NOT NULL) OR " \
             "(state <> 'AwaitingCardDecision')",
-            name="ck_main_card_info_notnull_in_awaitingcarddecision"
+            name="ck_game_turns_main_card_info_notnull_in_awaitingcarddecision"
         )
     )
 
@@ -311,7 +316,9 @@ class GameTurn(Base):
     )
 
     main_card_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("game_cards.id"),
+        ForeignKey(
+            "game_cards.id",
+            name="fk_game_turns_main_card_id"),
         nullable=True
     )
 
