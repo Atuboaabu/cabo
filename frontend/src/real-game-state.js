@@ -12,26 +12,28 @@ export function createRealGameState({
  const state={gameId:null,view:null,privateCards:new Map(),acceptedPositions:new Set(),remaining:2,loading:false,
   error:'',wsConnected:false,command:null,outcomeUnknown:false,deadlineMs:null,remainingSeconds:null};
  let generation=0,socket=null,pollTimer=null,clockTimer=null,reconnectTimer=null,reconnectAttempt=0;
- let queued=false,reading=false,privateRequest=0,timeoutAttempts=0,offsetMs=0;
+ let queued=false,reading=false,privateRequest=0,timeoutAttempts=0,offsetMs=0,expectedRoomId=null,endedLocally=false,expired=false,deadlineTimer=null;
  const emit=()=>onChange(state);
  const save=id=>{try{id?storage?.setItem(KEY,id):storage?.removeItem(KEY);}catch{}};
  const stored=()=>{try{const id=storage?.getItem(KEY);return UUID.test(id||'')?id:null;}catch{return null;}};
  const clearPrivate=()=>{state.privateCards.clear();state.remaining=0;privateRequest++;};
  const nowServer=()=>Date.now()+offsetMs;
  const inWindow=()=>state.view?.state==='Playing'&&state.view.phase==='InitialPeek'&&
-  !!state.deadlineMs&&nowServer()<state.deadlineMs&&
-  !state.view.players.find(p=>p.account_id===getAccountId())?.initial_peek_completed;
+  !!state.deadlineMs&&!expired&&!endedLocally&&nowServer()<state.deadlineMs&&
+  state.view.viewer_account_id===getAccountId()&&state.view.players.some(p=>p.account_id===getAccountId()&&!p.initial_peek_completed);
  function cancelTimers(){
   if(pollTimer!=null)clearTimeoutFn(pollTimer);
   if(clockTimer!=null)clearIntervalFn(clockTimer);
   if(reconnectTimer!=null)clearTimeoutFn(reconnectTimer);
-  pollTimer=clockTimer=reconnectTimer=null;
+  if(deadlineTimer!=null)clearTimeoutFn(deadlineTimer);
+  pollTimer=clockTimer=reconnectTimer=deadlineTimer=null;
  }
  function reset({keepLocator=false}={}){
   generation++;cancelTimers();socket?.close();socket=null;
   clearPrivate();state.acceptedPositions.clear();state.view=null;state.loading=false;state.error='';
   state.wsConnected=false;state.command=null;state.outcomeUnknown=false;state.deadlineMs=null;
   state.remainingSeconds=null;queued=false;reading=false;timeoutAttempts=0;reconnectAttempt=0;
+  expectedRoomId=null;endedLocally=false;expired=false;
   if(!keepLocator){state.gameId=null;save(null);}emit();
  }
  function adjustClock(serverTime,rttMs){
@@ -42,7 +44,8 @@ export function createRealGameState({
  function updateClock(){
   if(!state.view||state.view.phase!=='InitialPeek')return;
   state.remainingSeconds=Math.max(0,Math.ceil((state.deadlineMs-nowServer())/1000));
-  if(!inWindow()){if(state.privateCards.size)clearPrivate();if(state.command?.kind==='peek')state.command=null;}
+  if(nowServer()>=state.deadlineMs)expired=true;
+  if(!inWindow())clearPrivate();
   emit();
   if(state.remainingSeconds===0&&pollTimer==null&&timeoutAttempts===0)pollAfterDeadline();
  }
@@ -100,6 +103,11 @@ export function createRealGameState({
   try{
    const v=await api.getGame(id);
    if(token!==generation||state.gameId!==id)return false;
+   if(v.id.toLowerCase()!==id.toLowerCase()||v.viewer_account_id!==getAccountId()||
+      (expectedRoomId&&v.room_id!==expectedRoomId)){
+    const e=new Error('游戏、房间或当前账号身份不一致。');e.code='INVALID_RESPONSE';throw e;
+   }
+   expectedRoomId=v.room_id;
    if(state.view&&v.state_revision<state.view.state_revision)return true;
    adjustClock(v.server_time,Date.now()-startedAt);
    state.view=v;state.error='';state.loading=false;
@@ -107,16 +115,21 @@ export function createRealGameState({
     state.deadlineMs=Date.parse(v.initial_peek_deadline_at);
     state.remainingSeconds=Math.max(0,Math.ceil((state.deadlineMs-nowServer())/1000));
     const me=v.players.find(p=>p.account_id===getAccountId());
-    if(me?.initial_peek_completed||!inWindow())clearPrivate();
+    if(me?.initial_peek_completed){endedLocally=true;}
+    if(nowServer()>=state.deadlineMs)expired=true;
+    if(!inWindow())clearPrivate();
     else{
      for(const pos of [...state.privateCards.keys()])
       if(!me.initial_peek_confirmed_positions.includes(pos))state.privateCards.delete(pos);
     }
     if(clockTimer==null)clockTimer=setIntervalFn(updateClock,1000);
+    if(deadlineTimer!=null)clearTimeoutFn(deadlineTimer);
+    if(!expired)deadlineTimer=setTimeoutFn(()=>{deadlineTimer=null;updateClock();},Math.max(0,state.deadlineMs-nowServer()));
     if(pollTimer!=null){clearTimeoutFn(pollTimer);pollTimer=null;}
     if(state.remainingSeconds===0)pollAfterDeadline();
    }else{
     clearPrivate();state.acceptedPositions.clear();state.deadlineMs=null;state.remainingSeconds=null;
+    if(deadlineTimer!=null)clearTimeoutFn(deadlineTimer);deadlineTimer=null;
     if(clockTimer!=null)clearIntervalFn(clockTimer);clockTimer=null;
     if(pollTimer!=null)clearTimeoutFn(pollTimer);pollTimer=null;
    }
@@ -126,8 +139,8 @@ export function createRealGameState({
    if(token!==generation)return false;
    state.loading=false;
    if([401,403,404,409].includes(e?.status)||e?.code==='INVALID_RESPONSE'){
-    clearPrivate();state.view=null;
-    clearPrivate();socket?.close();socket=null;state.view=null;state.wsConnected=false;
+    clearPrivate();cancelTimers();socket?.close();socket=null;state.view=null;state.wsConnected=false;
+    state.command=null;state.outcomeUnknown=false;
     if(e.status===401)onUnauthorized();
     if(e.status===403||e.status===404){save(null);state.gameId=null;}
    }
@@ -149,16 +162,16 @@ export function createRealGameState({
    state.privateCards=new Map(v.revealed_cards.map(c=>[c.position,c.value]));
    state.remaining=v.remaining_peek_count;emit();return true;
   }catch(e){
-   if(token!==generation)return false;
+   if(token!==generation||seq!==privateRequest)return false;
    clearPrivate();
    if(e.status===401)onUnauthorized();
    state.error=e.message||'无法恢复私人查看结果。';emit();return false;
   }
  }
- async function enter(id){
+ async function enter(id,roomId=null){
   if(!UUID.test(id||''))return false;
   if(state.gameId?.toLowerCase()===id.toLowerCase()&&state.view)return true;
-  reset();state.gameId=id;save(id);state.loading=true;emit();
+  reset();expectedRoomId=roomId;state.gameId=id;save(id);state.loading=true;emit();
   if(!await refresh())return false;
   connect();
   if(inWindow())void loadPrivate();
@@ -177,7 +190,7 @@ export function createRealGameState({
     me.initial_peek_confirmed_positions.length>=2||!Number.isInteger(position)||position<0||position>3))return false;
   const command={kind,position,requestId:globalThis.crypto.randomUUID(),unknown:false};
   state.command=command;state.error='';
-  if(kind==='end')clearPrivate();
+  if(kind==='end'){endedLocally=true;clearPrivate();}
   emit();return submit(command);
  }
  async function submit(command){
@@ -198,6 +211,7 @@ export function createRealGameState({
        Date.parse(out.peek_result.deadline_at)===state.deadlineMs&&inWindow())
       state.privateCards.set(command.position,out.peek_result.value);
    }else{
+    if(command.kind==='end')endedLocally=false;
     state.error=out.status==='IdentityConflict'?'请求 ID 与历史操作冲突。':
       '请求未被服务器接受：'+(out.reason||out.status);
    }
@@ -211,6 +225,7 @@ export function createRealGameState({
     state.error='操作结果未知，请重试原请求，不要再次选择目标。';
    }else{
     state.command=null;state.outcomeUnknown=false;state.error=e.message||'命令失败。';
+    if(command.kind==='end')endedLocally=false;
     if([401,403,404].includes(e.status))clearPrivate();
     if(e.status===401)onUnauthorized();
    }
@@ -222,7 +237,7 @@ export function createRealGameState({
   state.command.unknown=false;state.outcomeUnknown=false;emit();
   return submit(state.command);
  }
- function onReturn(){if(!state.gameId)return;updateClock();void (async()=>{if(await refresh()&&!socket)connect();})();}
+ function onReturn(){if(!state.gameId)return;updateClock();void (async()=>{if(await refresh()){if(!socket)connect();if(inWindow())void loadPrivate();}})();}
  return {state,enter,restore,refresh,loadPrivate,peek:position=>runCommand('peek',position),
   complete:()=>runCommand('end'),retry,reset,onReturn,clearPrivate,getStoredId:stored};
 }
