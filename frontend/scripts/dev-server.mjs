@@ -23,7 +23,8 @@ const routes = new Map([
   ['/auth/login', 'POST'],
   ['/auth/me', 'GET'],
   ['/auth/logout', 'POST'],
-  ['/auth/refresh', 'POST']
+  ['/auth/refresh', 'POST'],
+  ['/rooms/current', 'GET']
 ]);
 // Exact Room API route shapes; do not permit arbitrary /rooms/* forwarding.
 const UUID_PART = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';

@@ -1,6 +1,6 @@
 /**
  * Real Room navigation controller. The stored UUID is a locator, never proof
- * of membership. Only a successful GET /rooms/{id} authorizes the displayed view.
+ * of membership. GET /rooms/current is authoritative for account recovery.
  * No Auth cookie, Account, or Room View is persisted.
  */
 const KEY='cabo.lastRealRoomId';
@@ -15,7 +15,7 @@ const trace=(event,roomId,extra={})=>{
 export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthorized=()=>{},onStarted=()=>{},getAccountId=()=>null,createSocket=null,setTimeoutFn=globalThis.setTimeout,clearTimeoutFn=globalThis.clearTimeout,random=Math.random}={}) {
   const state={
     roomId:null,view:null,pending:null,error:'',outcomeUnknown:false,
-    joinCode:'',stale:false,quietRead:false
+    joinCode:'',stale:false,quietRead:false,currentConfirmed:false
   };
   let generation=0,queuedRoomChange=false,queuedCloseVerification=false,queuedReturnVerification=false,notificationsPaused=false;
   // Single recovery owner and at most one timeout for the current generation.
@@ -162,7 +162,9 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
   function verifyOnReturn(){
     // A missed WebSocket close cannot be distinguished from a healthy socket.
     // Re-check membership once when the tab/window comes back to the foreground.
-    if(notificationsPaused||!state.roomId||!state.view)return false;
+    if(notificationsPaused)return false;
+    if(!state.currentConfirmed||state.outcomeUnknown){void restore();return true;}
+    if(!state.roomId||!state.view)return false;
     // A close recovery already owns the next authoritative validation, with
     // one bounded timer. Focus must not bypass its backoff or queue a second GET.
     if(recovery&&isRecoveryActive(recovery))return true;
@@ -196,11 +198,12 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
     }catch { /* Storage unavailable, no session permission inferred. */ }
     return null;
   };
-  function reset({silent=false}={}){
+  function reset({silent=false,confirmedEmpty=false,keepLocator=false}={}){
     generation++; // Invalidate any outstanding create/join/GET response.
     queuedRoomChange=false;queuedCloseVerification=false;queuedReturnVerification=false;
     cancelRecovery();socket?.close();
-    save(null);
+    if(!keepLocator)save(null);
+    state.currentConfirmed=confirmedEmpty;
     state.roomId=null;state.view=null;state.pending=null;state.error='';
     state.outcomeUnknown=false;state.joinCode='';state.stale=false;state.quietRead=false;
     emit(silent?{silent:true}:undefined);
@@ -210,24 +213,26 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
   }
   function failure(error,kind,action=null) {
     state.error=error?.message||'房间请求未完成，请稍后重试。';
-    if(error?.outcomeUnknown && kind!=='read'){
+    if((error?.outcomeUnknown||error?.code==='ACCOUNT_ALREADY_INROOM') && kind!=='read'){
+      state.currentConfirmed=false;
       state.outcomeUnknown=true;
       state.error+=kind==='mutation'
         ? ' 操作结果尚不能确认，请刷新房间，勿重复提交。'
         : ' 请先从其他已登录页面确认房间状态，勿直接重复创建或加入。';
     }
     if((error?.status===403 || error?.status===404) && kind!=='mutation'){
+      state.currentConfirmed=false;
       // An authoritative GET may revoke the current Room locator.
       queuedRoomChange=false;queuedCloseVerification=false;queuedReturnVerification=false;cancelRecovery();socket?.close();
       trace('room-access-revoked',state.roomId,{status:error.status});
-      save(null);state.roomId=null;state.view=null;state.stale=false;
+      state.roomId=null;state.view=null;state.stale=false;
     }else if(kind==='read'||kind==='mutation'){
       // Mutation conflicts / network uncertainty require a fresh GET before
       // any more writes. A kick-target 404 does not invalidate the whole Room.
       state.stale=!!state.view;
       if(kind==='mutation' && action==='kick' && error?.status===404)
         state.error+=' 请刷新房间查看最新成员。';
-      if(error?.status===401){cancelRecovery();state.view=null;socket?.close();}
+      if(error?.status===401){state.currentConfirmed=false;cancelRecovery();state.view=null;socket?.close();}
     }
     if(error?.status===401)Promise.resolve().then(onUnauthorized).catch(()=>{});
   }
@@ -249,7 +254,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
       if(fromClose)trace('close-recheck-result',id,{status:200});
       if(room.id.toLowerCase()!==id.toLowerCase())throw Error('服务端返回的房间 ID 不一致，请重新验证。');
       changed=JSON.stringify(state.view)!==JSON.stringify(room)||!!state.error||state.stale;
-      state.roomId=id;state.view=room;state.error='';state.stale=false;
+      state.roomId=id;state.view=room;state.currentConfirmed=true;state.error='';state.stale=false;
       state.outcomeUnknown=false;
       save(id);
       reconcileRoomSocket(room);
@@ -279,7 +284,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
     }
   }
   async function enter(write) {
-    if(state.pending||state.outcomeUnknown||state.roomId)return false;
+    if(state.pending||!state.currentConfirmed||state.outcomeUnknown||state.roomId)return false;
     const token=generation;
     state.pending=write;state.error='';emit();
     let roomId=null;
@@ -295,19 +300,18 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
       const room=await api.getRoom(roomId);
       if(token!==generation)return false;
       if(room.id.toLowerCase()!==roomId.toLowerCase())throw Error('服务端返回的房间 ID 不一致，请重新验证。');
-      state.view=room;state.error='';state.stale=false;state.outcomeUnknown=false;
+      state.view=room;state.currentConfirmed=true;state.error='';state.stale=false;state.outcomeUnknown=false;
       reconcileRoomSocket(room);
       return true;
     }catch(error){
-      // If Create/Join committed but returned no ID, there is no safe way
-      // to discover that Room through the available backend endpoints.
+      // An unknown write outcome must be reconciled through GET /rooms/current.
       if(token===generation)failure(error,roomId?'read':write);
       return false;
     }finally{if(token===generation){state.pending=null;emit();flushRoomChange();}}
   }
   async function createRoom(){return enter('create');}
   async function joinRoom(){
-    if(state.pending||state.outcomeUnknown||state.roomId)return false;
+    if(state.pending||!state.currentConfirmed||state.outcomeUnknown||state.roomId)return false;
     const normalized=state.joinCode.trim().toUpperCase();
     if(!ROOM_CODE.test(normalized)){
       state.error='请输入有效的六位房间码。';emit();return false;
@@ -317,20 +321,45 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
   }
   async function restore(){
     if(state.pending)return false;
-    const id=stored();
-    if(!id){queuedRoomChange=false;queuedCloseVerification=false;queuedReturnVerification=false;cancelRecovery();socket?.close();state.roomId=null;state.view=null;state.error='';state.stale=false;emit();return false;}
-    if(state.roomId?.toLowerCase()!==id.toLowerCase()){
-      queuedRoomChange=false;queuedCloseVerification=false;queuedReturnVerification=false;cancelRecovery();socket?.close();
+    const token=++generation,accountId=getAccountId();
+    queuedRoomChange=false;queuedCloseVerification=false;queuedReturnVerification=false;
+    cancelRecovery();socket?.close();
+    // Retain the old locator on failure, but never display an unverified view.
+    state.roomId=state.roomId||stored();state.view=null;state.currentConfirmed=false;
+    state.pending='current';state.error='';state.stale=false;emit();
+    try{
+      const room=await api.getCurrentRoom();
+      if(token!==generation||accountId!==getAccountId())return false;
+      if(room===null){
+        save(null);state.roomId=null;state.view=null;
+      }else{
+        if(!accountId||!UUID.test(room.id)||!['Lobby','Playing'].includes(room.state)||
+           !room.members.some(m=>m.account_id===accountId)||
+           (room.state==='Playing'&&!UUID.test(room.game_session_id||'')))
+          throw Error('服务器返回的当前房间身份或状态不一致。');
+        state.roomId=room.id;state.view=room;save(room.id);
+        reconcileRoomSocket(room);
+      }
+      state.currentConfirmed=true;state.outcomeUnknown=false;state.error='';
+      return true;
+    }catch(error){
+      if(token!==generation||accountId!==getAccountId())return false;
+      state.error=error?.message||'无法确认当前房间，请重试。';
+      state.currentConfirmed=false;state.view=null;
+      if(error?.status===401)Promise.resolve().then(onUnauthorized).catch(()=>{});
+      return false;
+    }finally{
+      if(token===generation&&accountId===getAccountId()){
+        state.pending=null;emit();flushRoomChange();
+      }
     }
-    state.roomId=id;state.view=null; // Never restore an unverified cached Room View.
-    return readRoom(id);
   }
   async function refresh(){
-    return state.roomId?readRoom(state.roomId):false;
+    return !state.currentConfirmed||state.outcomeUnknown||!state.roomId?restore():readRoom(state.roomId);
   }
   function authorizedMember(){
     if(!state.roomId||!state.view||state.view.state!=='Lobby'||
-       state.pending||state.stale||state.outcomeUnknown)return null;
+       state.pending||!state.currentConfirmed||state.stale||state.outcomeUnknown)return null;
     const id=getAccountId();
     return id ? state.view.members.find(member=>member.account_id===id)||null : null;
   }
@@ -373,7 +402,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
       if(token!==generation)return false;
       if(action==='leave'||action==='disband'){
         // Only a confirmed 204 clears the Room locator; Session stays intact.
-        reset({silent:true});
+        reset({silent:true,confirmedEmpty:true});
         return true;
       }
       state.pending='read';state.quietRead=true;emit({silent:true});
@@ -381,7 +410,7 @@ export function createRealRoomState({api,storage=null,onChange=()=>{},onUnauthor
         const latest=await api.getRoom(id);
         if(token!==generation||queuedCloseVerification||queuedReturnVerification)return false;
         if(latest.id.toLowerCase()!==id.toLowerCase())throw Error('服务端返回的房间 ID 不一致，请刷新房间。');
-        state.view=latest;
+        state.view=latest;state.currentConfirmed=true;
         reconcileRoomSocket(latest);
         state.stale=false;
         state.outcomeUnknown=false;
