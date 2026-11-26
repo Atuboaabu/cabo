@@ -11,7 +11,7 @@ export function realGameMarkup(s){
   const confirmed=initial&&own&&me.initial_peek_confirmed_positions.includes(card.position);
   const privateValue=active&&own?s.privateCards.get(card.position):undefined;
   const value=card.face_up?card.value:privateValue;
-  const canPeek=active&&own&&!card.face_up&&!confirmed&&me.initial_peek_confirmed_positions.length<2&&!s.command&&!s.outcomeUnknown;
+  const canPeek=active&&own&&!card.face_up&&!confirmed&&!s.acceptedPositions.has(card.position)&&me.initial_peek_confirmed_positions.length<2&&!s.command&&!s.outcomeUnknown;
   return '<button type="button" class="real-game-card '+(value===undefined?'is-hidden':'is-visible')+'" '+(canPeek?'data-action="realPeek:'+card.position+'"':'disabled')+
    ' aria-label="位置 '+(card.position+1)+(confirmed?'，已查看':'')+'"><strong>'+
    (value===undefined?'♤':esc(value))+'</strong><small>位置 '+(card.position+1)+(confirmed?' · 已查看':'')+'</small></button>';
@@ -21,7 +21,7 @@ export function realGameMarkup(s){
   (p.account_id===g.viewer_account_id?'（你）':'')+'</h3>'+cards(p)+
   (initial?'<p class="hint">'+(p.initial_peek_completed?'已结束初始查看':'正在初始查看')+'</p>':'')+'</article>').join('');
  const status=initial?'<article class="paper-card"><h2>初始查看 · 共享倒计时 '+esc(s.remainingSeconds??0)+' 秒</h2>'+
-  '<p>已确认 '+esc(me.initial_peek_confirmed_positions.length)+' / 2 个位置；每个位置只能查看一次。</p>'+
+  '<p>已确认 '+esc(me.initial_peek_confirmed_positions.length)+' / 2 个位置，剩余 '+esc(2-me.initial_peek_confirmed_positions.length)+' 次；每个位置只能查看一次。</p>'+
   (me.initial_peek_completed?'<p role="status">你已结束查看，等待其他玩家或截止时间。</p>':
     active?'<button type="button" class="primary" data-action="realGameEnd" '+(s.command?'disabled':'')+'>主动结束 InitialPeek</button>':
     '<p role="status">查看窗口已结束，等待服务器推进阶段。</p>')+'</article>':
