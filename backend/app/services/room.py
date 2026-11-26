@@ -547,65 +547,17 @@ def get_current_room(
     session: Session,
     user_account: UserAccount,
 )->RoomView | None:
-    room_member = session.execute(
-        select(RoomMember).where(
+    room_id = session.execute(
+        select(RoomMember.room_id).where(
             RoomMember.account_id == user_account.id,
             RoomMember.left_at.is_(None)
         )
     ).scalar_one_or_none()
-    if room_member is None:
+    if room_id is None:
         return None
-    
-    room = session.execute(
-        select(Room).where(
-            Room.id == room_member.room_id
-        )
-    ).scalar_one_or_none()
-    if room is None:
-        raise exceptions.RoomNotExistException()
 
-    game_session_id = None
-    if room.state == "Playing":
-        game_session_id = session.execute(
-            select(GameSession.id).where(
-                GameSession.room_id == room.id,
-                GameSession.state == "Playing"
-            )
-        ).scalar_one_or_none()
-        if game_session_id is None:
-            raise exceptions.InvalidGameStateException()
-
-    members_info = session.execute(
-        select(
-            RoomMember.account_id,
-            UserAccount.username,
-            RoomMember.seat_index,
-            RoomMember.is_ready
-        ).join(
-            UserAccount,
-            RoomMember.account_id == UserAccount.id
-        ).where(
-            RoomMember.room_id == room.id,
-            RoomMember.left_at.is_(None)
-        ).order_by(
-            RoomMember.seat_index
-        )
-    ).mappings().all()
-
-    return RoomView(
-        id=room.id,
-        room_code=room.room_code,
-        state=room.state,
-        host_account_id=room.host_account_id,
-        game_session_id=game_session_id,
-        members=[
-            RoomMemberView(
-                account_id=member_info.account_id,
-                username=member_info.username,
-                seat_index=member_info.seat_index,
-                is_ready=member_info.is_ready,
-                is_host=(member_info.account_id == room.host_account_id)
-            )
-            for member_info in members_info
-        ]
+    return get_room_info(
+        session,
+        user_account,
+        room_id
     )
