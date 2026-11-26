@@ -223,5 +223,5 @@ export function createRealGameState({
  }
  function onReturn(){if(!state.gameId)return;updateClock();void (async()=>{if(await refresh()&&!socket)connect();})();}
  return {state,enter,restore,refresh,loadPrivate,peek:position=>runCommand('peek',position),
-  complete:()=>runCommand('end'),retry,reset,onReturn,clearPrivate};
+  complete:()=>runCommand('end'),retry,reset,onReturn,clearPrivate,getStoredId:stored};
 }
