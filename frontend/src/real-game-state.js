@@ -9,7 +9,7 @@ export function createRealGameState({
  setTimeoutFn=globalThis.setTimeout,clearTimeoutFn=globalThis.clearTimeout,
  setIntervalFn=globalThis.setInterval,clearIntervalFn=globalThis.clearInterval
 }={}){
- const state={gameId:null,view:null,privateCards:new Map(),remaining:2,loading:false,
+ const state={gameId:null,view:null,privateCards:new Map(),acceptedPositions:new Set(),remaining:2,loading:false,
   error:'',wsConnected:false,command:null,outcomeUnknown:false,deadlineMs:null,remainingSeconds:null};
  let generation=0,socket=null,pollTimer=null,clockTimer=null,reconnectTimer=null,reconnectAttempt=0;
  let queued=false,reading=false,privateRequest=0,timeoutAttempts=0,offsetMs=0;
@@ -29,7 +29,7 @@ export function createRealGameState({
  }
  function reset({keepLocator=false}={}){
   generation++;cancelTimers();socket?.close();socket=null;
-  clearPrivate();state.view=null;state.loading=false;state.error='';
+  clearPrivate();state.acceptedPositions.clear();state.view=null;state.loading=false;state.error='';
   state.wsConnected=false;state.command=null;state.outcomeUnknown=false;state.deadlineMs=null;
   state.remainingSeconds=null;queued=false;reading=false;timeoutAttempts=0;reconnectAttempt=0;
   if(!keepLocator){state.gameId=null;save(null);}emit();
@@ -116,7 +116,7 @@ export function createRealGameState({
     if(pollTimer!=null){clearTimeoutFn(pollTimer);pollTimer=null;}
     if(state.remainingSeconds===0)pollAfterDeadline();
    }else{
-    clearPrivate();state.deadlineMs=null;state.remainingSeconds=null;
+    clearPrivate();state.acceptedPositions.clear();state.deadlineMs=null;state.remainingSeconds=null;
     if(clockTimer!=null)clearIntervalFn(clockTimer);clockTimer=null;
     if(pollTimer!=null)clearTimeoutFn(pollTimer);pollTimer=null;
    }
@@ -192,6 +192,7 @@ export function createRealGameState({
    }
    state.outcomeUnknown=false;state.command=null;
    if(out.status==='Accepted'){
+    if(command.kind==='peek')state.acceptedPositions.add(command.position);
     if(command.kind==='end')clearPrivate();
     if(command.kind==='peek'&&out.peek_result&&out.peek_result.position===command.position&&
        Date.parse(out.peek_result.deadline_at)===state.deadlineMs&&inWindow())
