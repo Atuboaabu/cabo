@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy import select, func, update
 from datetime import datetime, timezone
 
-from app.models import UserAccount, Room, RoomMember
+from app.models import UserAccount, Room, RoomMember, GameSession
 from app.schemas import (ROOM_CODE_ALPHABET, RoomMemberView, RoomView,
                          RoomResponse, RoomReadyResponse)
 from app.exc import exceptions
@@ -455,6 +455,17 @@ def get_room_info(
     ).scalar_one_or_none()
     if room_member is None:
         raise exceptions.RequesterWrongException()
+    
+    game_session_id = None
+    if room.state == "Playing":
+        game_session_id = session.execute(
+            select(GameSession.id).where(
+                GameSession.room_id == room_id,
+                GameSession.state == "Playing"
+            )
+        ).scalar_one_or_none()
+        if game_session_id is None:
+            raise exceptions.InvalidGameStateException()
 
     members_info = session.execute(
         select(
@@ -478,6 +489,7 @@ def get_room_info(
         room_code=room.room_code,
         state=room.state,
         host_account_id=room.host_account_id,
+        game_session_id=game_session_id,
         members=[
             RoomMemberView(
                 account_id=member_info.account_id,

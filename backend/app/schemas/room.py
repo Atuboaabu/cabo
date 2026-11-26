@@ -44,4 +44,5 @@ class RoomView(BaseModel):
     room_code: str
     state: str
     host_account_id: uuid.UUID
+    game_session_id: uuid.UUID | None = None
     members: list[RoomMemberView]
