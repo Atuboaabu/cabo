@@ -269,8 +269,8 @@ async function send(command,payload={}){
 }
 // HttpOnly Cookie remains browser-managed; only public Account fields live here.
 async function restoreRealSession({skipRoomRestore=false}={}){
- realRooms.pauseNotifications();realGames.reset({keepLocator:true});realRooms.reset({keepLocator:true});
- realAuthState='checking';render();
+ realAuthState='checking';realRoomConfirmation=null;
+ realRooms.pauseNotifications();realGames.reset({keepLocator:true});realRooms.reset({keepLocator:true});render();
  try{
   const account=await createAuthApi().getMe();
   if(realAccount?.id && realAccount.id!==account.id){realGames.reset();realRoomConfirmation=null;
@@ -300,6 +300,7 @@ async function submitRealLogin(form,data){
  try{
   const account=await createAuthApi().login({email:data.email,password:data.password});
   if(realAccount?.id && realAccount.id!==account.id){realGames.reset();realRoomConfirmation=null;realRooms.reset();}
+  realRooms.pauseNotifications();realRooms.reset({keepLocator:true});realGames.reset({keepLocator:true});
   realAccount=account;
   realAuthState='authenticated';
   realAuthError='';
@@ -318,20 +319,21 @@ async function submitRealLogin(form,data){
 }
 async function logoutRealSession(){
  if(realBusy||realAuthState!=='authenticated')return;
- realRooms.pauseNotifications();realGames.reset();
- realBusy=true;realAuthError='';render();
+ realBusy=true;realAuthError='';realRoomConfirmation=null;
+ realRooms.pauseNotifications();realGames.reset({keepLocator:true});realRooms.reset({keepLocator:true});render();
  try{
   await createAuthApi().logout();
-  realRoomConfirmation=null;
+  realGames.reset();realRoomConfirmation=null;
   realRooms.reset();
   realAccount=null;realAuthState='anonymous';screen='auth';authMode='login';
  }catch(error){
   if(error.status===401){
-   realRoomConfirmation=null;
+   realGames.reset();realRoomConfirmation=null;
    realRooms.reset();
    realAccount=null;realAuthState='anonymous';screen='auth';authMode='login';
   }else{
    // A network failure is not evidence that the server revoked the session.
+   await restoreRealSession();
    realAuthError=error.message||'无法确认退出结果，请重试。';
   }
  }finally{realBusy=false;render();}
@@ -450,7 +452,7 @@ root.addEventListener('click',e=>{
   if(a==='realGameRetry'){void realGames.retry();return;}
   if(a==='realGameEnd'){const s=realGames.state;const me=s.view?.players.find(p=>p.account_id===s.view.viewer_account_id);if(me&&me.initial_peek_confirmed_positions.length<2&&!window.confirm('剩余查看机会将作废，确认结束？'))return;void realGames.complete();return;}
   if(a==='realGameBack'){realGames.reset({keepLocator:true});screen='real-account';render();return;}
-  if(a==='realGameResume'){const r=realRooms.state.view;enterRealGame(discoveredGame(r),r?.id);return;}
+  if(a==='realGameResume'){const r=realRooms.state.view;if(realRooms.state.currentConfirmed&&!realRooms.state.pending&&!realRooms.state.stale)enterRealGame(discoveredGame(r),r?.id);return;}
   if(a.startsWith('realPeek:')){void realGames.peek(Number(a.slice('realPeek:'.length)));return;}
   if(a==='retryRealAuth'){restoreRealSession();return;}
  if(a==='realLogout'){logoutRealSession();return;}
