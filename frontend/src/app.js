@@ -74,7 +74,7 @@ function realRoomPanel(){
  const pending=showPending?'<p class="real-room-feedback" data-tone="info" role="status">正在'+({create:'创建房间',join:'加入房间',read:'同步服务器房间信息'}[room.pending]||'处理房间请求')+'…</p>':'';
  if(room.roomId){
   const r=room.view,members=r?[...r.members].sort((a,b)=>a.seat_index-b.seat_index):[];
-  const knownGame=realGames.state.view?.room_id===r?.id?realGames.state.gameId:null;
+  const knownGame=realGames.state.view?.room_id===r?.id?realGames.state.gameId:realGames.getStoredId();
   const me=r?.members.find(m=>m.account_id===realAccount.id);
   const lobby=r?.state==='Lobby'&&!!me;
   const locked=waiting||room.stale||room.outcomeUnknown||realBusy;
@@ -440,8 +440,8 @@ root.addEventListener('click',e=>{
  if(a==='realGameRefresh'){void realGames.refresh();return;}
   if(a==='realGameRetry'){void realGames.retry();return;}
   if(a==='realGameEnd'){void realGames.complete();return;}
-  if(a==='realGameBack'){realGames.reset();screen='real-account';render();return;}
-  if(a==='realGameResume'){enterRealGame(realGames.state.gameId);return;}
+  if(a==='realGameBack'){realGames.reset({keepLocator:true});screen='real-account';render();return;}
+  if(a==='realGameResume'){enterRealGame(realGames.state.gameId||realGames.getStoredId());return;}
   if(a.startsWith('realPeek:')){void realGames.peek(Number(a.slice('realPeek:'.length)));return;}
   if(a==='retryRealAuth'){restoreRealSession();return;}
  if(a==='realLogout'){logoutRealSession();return;}
