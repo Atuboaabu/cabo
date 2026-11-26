@@ -34,10 +34,10 @@ export function createRealGameState({
   state.remainingSeconds=null;queued=false;reading=false;timeoutAttempts=0;reconnectAttempt=0;
   if(!keepLocator){state.gameId=null;save(null);}emit();
  }
- function adjustClock(serverTime){
+ function adjustClock(serverTime,rttMs){
   // Response arrival biases the estimate toward delaying expiry, so clamp it
   // toward early hiding with a small safety margin.
-  offsetMs=Date.parse(serverTime)-Date.now()+250;
+  offsetMs=Date.parse(serverTime)-Date.now()+Math.max(250,rttMs);
  }
  function updateClock(){
   if(!state.view||state.view.phase!=='InitialPeek')return;
@@ -96,12 +96,12 @@ export function createRealGameState({
  async function refresh(){
   if(!state.gameId)return false;
   if(reading){queued=true;return false;}
-  reading=true;const id=state.gameId,token=generation;
+  reading=true;const id=state.gameId,token=generation,startedAt=Date.now();
   try{
    const v=await api.getGame(id);
    if(token!==generation||state.gameId!==id)return false;
    if(state.view&&v.state_revision<state.view.state_revision)return true;
-   adjustClock(v.server_time);
+   adjustClock(v.server_time,Date.now()-startedAt);
    state.view=v;state.error='';state.loading=false;
    if(v.phase==='InitialPeek'){
     state.deadlineMs=Date.parse(v.initial_peek_deadline_at);
@@ -125,7 +125,8 @@ export function createRealGameState({
   }catch(e){
    if(token!==generation)return false;
    state.loading=false;
-   if([401,403,404].includes(e?.status)){
+   if([401,403,404,409].includes(e?.status)||e?.code==='INVALID_RESPONSE'){
+    clearPrivate();state.view=null;
     clearPrivate();socket?.close();socket=null;state.view=null;state.wsConnected=false;
     if(e.status===401)onUnauthorized();
     if(e.status===403||e.status===404){save(null);state.gameId=null;}
@@ -220,7 +221,7 @@ export function createRealGameState({
   state.command.unknown=false;state.outcomeUnknown=false;emit();
   return submit(state.command);
  }
- function onReturn(){if(!state.gameId)return;void (async()=>{if(await refresh()&&!socket)connect();})();}
+ function onReturn(){if(!state.gameId)return;updateClock();void (async()=>{if(await refresh()&&!socket)connect();})();}
  return {state,enter,restore,refresh,loadPrivate,peek:position=>runCommand('peek',position),
   complete:()=>runCommand('end'),retry,reset,onReturn,clearPrivate};
 }
