@@ -58,6 +58,8 @@ function validResponse(data,kind) {
   if(kind==='start')return isUUID(data.id)&&isUUID(data.room_id)&&isString(data.state)&&isString(data.started_at);
   if(!isUUID(data.id)||!isString(data.room_code)||!isUUID(data.host_account_id)||!isString(data.state))return false;
   if(kind==='room')return true;
+  // Legacy Lobby fixtures may omit the nullable field; Playing must carry a real UUID.
+  if(data.state==='Playing'?!isUUID(data.game_session_id):data.game_session_id!=null)return false;
   return Array.isArray(data.members)&&data.members.every(member=>
     isObject(member)&&isUUID(member.account_id)&&isString(member.username)&&
     Number.isInteger(member.seat_index)&&typeof member.is_ready==='boolean'&&

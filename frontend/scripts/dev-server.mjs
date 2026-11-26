@@ -34,7 +34,11 @@ const roomRoutes = [
   ['PUT', new RegExp('^/rooms/'+UUID_PART+'/ready$','i')],
   ['POST', new RegExp('^/rooms/'+UUID_PART+'/leave$','i')],
   ['POST', new RegExp('^/rooms/'+UUID_PART+'/members/'+UUID_PART+'/kick$','i')],
-  ['POST', new RegExp('^/rooms/'+UUID_PART+'/disband$','i')]
+  ['POST', new RegExp('^/rooms/'+UUID_PART+'/disband$','i')],
+  ['POST', new RegExp('^/rooms/'+UUID_PART+'/start$','i')],
+  ['GET', new RegExp('^/games/'+UUID_PART+'$','i')],
+  ['GET', new RegExp('^/games/'+UUID_PART+'/initial-peek-view$','i')],
+  ['POST', new RegExp('^/games/'+UUID_PART+'/commands/(initial-peek|complete-initial-peek)$','i')]
 ];
 export function allowedProxyMethod(path) {
   return routes.get(path)||roomRoutes.find(([,rule])=>rule.test(path))?.[0]||null;
@@ -106,7 +110,7 @@ const server = createServer(async (req, res) => {
     return;
   }
   // Rejected Room paths cannot fall through to static-file serving.
-  if(path==='/rooms'||path.startsWith('/rooms/')){
+  if(path==='/rooms'||path.startsWith('/rooms/')||path==='/games'||path.startsWith('/games/')){
     fail(res,404,'Room API route not found');return;
   }
   if (!['GET','HEAD'].includes(req.method)) { fail(res,405,'GET required');return; }
@@ -125,7 +129,7 @@ const server = createServer(async (req, res) => {
         // The HTTP proxy sets a host-only Session cookie for the page host.
         // A direct WS to a different loopback alias (localhost vs 127.0.0.1)
         // would omit that cookie despite successful HTTP login.
-        '<script>window.CABO_API_BASE_URL = window.CABO_API_BASE_URL || window.location.origin;window.CABO_ROOM_WS_BASE_URL = window.CABO_ROOM_WS_BASE_URL || (() => {const api=new URL(window.CABO_API_BASE_URL);if(api.origin!==window.location.origin)return api.origin;const upstream=new URL('+JSON.stringify(backend.origin).replace(/</g,'\\u003c')+');if(["localhost","127.0.0.1"].includes(upstream.hostname)&&["localhost","127.0.0.1"].includes(window.location.hostname))upstream.hostname=window.location.hostname;return upstream.origin;})();</script><script type="module" src="/src/app.js"></script>'
+        '<script>window.CABO_API_BASE_URL = window.CABO_API_BASE_URL || window.location.origin;window.CABO_ROOM_WS_BASE_URL = window.CABO_ROOM_WS_BASE_URL || (() => {const api=new URL(window.CABO_API_BASE_URL);if(api.origin!==window.location.origin)return api.origin;const upstream=new URL('+JSON.stringify(backend.origin).replace(/</g,'\\u003c')+');if(["localhost","127.0.0.1"].includes(upstream.hostname)&&["localhost","127.0.0.1"].includes(window.location.hostname))upstream.hostname=window.location.hostname;return upstream.origin;})();window.CABO_GAME_WS_BASE_URL=window.CABO_GAME_WS_BASE_URL||window.CABO_ROOM_WS_BASE_URL;</script><script type="module" src="/src/app.js"></script>'
       );
       bytes=Buffer.from(html);
     }
