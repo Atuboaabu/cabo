@@ -156,16 +156,17 @@
 }
 
 /* Server-authoritative game. Card backs never contain private values. */
-.real-game-head{display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap;margin-bottom:22px}
-.real-game-head h1{margin:6px 0}
-.real-game-players{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin:18px 0}
-.real-game-player h3{margin-bottom:16px}
-.real-game-hand{display:flex;flex-wrap:wrap;gap:8px}
-.real-game-card{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-width:56px;width:clamp(56px,5.8vw,79px);height:104px;border-radius:9px;border:2px solid #ba9860;font-family:inherit}
-.real-game-card strong{font-size:29px}
-.real-game-card small{font-size:10px}
-.real-game-card.is-hidden{background:#183e30;color:#e6cb90}
-.real-game-card.is-visible{background:#fff3d7;color:#32271e}
-.real-game-card:disabled{cursor:default;opacity:1}
-.real-game-card:not(:disabled):focus-visible{outline:3px solid #dbac49;outline-offset:3px}
-.real-game-card:not(:disabled):hover{transform:translateY(-3px)}
+/* Real Game reuses the original Mock table, card and responsive layout. */
+.real-table .deck:disabled{opacity:1;cursor:default}
+.real-table .peek-confirmed{border-color:#d9b86f}
+.real-table .opponent-name strong,.real-table .self-name strong{max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.real-table .real-table-error{color:#8a3c2f;margin-top:8px}
+.real-table-bottom{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;max-width:1100px;margin:12px auto;color:#fff0cd}
+.real-table-toolbar{display:flex;gap:8px;flex-wrap:wrap;color:#fff0cd}
+.real-table .game-header .real-table-toolbar{justify-content:flex-end}
+@media(max-width:560px){
+ .real-table .opponent-name strong{max-width:84px}
+ .real-table .turn-mark{font-size:8px;padding:3px 5px}
+ .real-table .self-name strong{max-width:110px}
+ .real-table-bottom{padding:0 8px}
+}
