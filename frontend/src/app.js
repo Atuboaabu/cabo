@@ -259,20 +259,20 @@ async function send(command,payload={}){
 }
 // HttpOnly Cookie remains browser-managed; only public Account fields live here.
 async function restoreRealSession({skipRoomRestore=false}={}){
- realRooms.pauseNotifications();
+ realRooms.pauseNotifications();realGames.reset({keepLocator:true});
  realAuthState='checking';render();
  try{
   const account=await createAuthApi().getMe();
-  if(realAccount?.id && realAccount.id!==account.id){
-   realRoomConfirmation=null;
+  if(realAccount?.id && realAccount.id!==account.id){realGames.reset();realRoomConfirmation=null;
    realRooms.reset(); // Account switch must not reuse a previous member's Room View.
   }
   realAccount=account;realAuthState='authenticated';realAuthError='';screen='real-account';
   if(!skipRoomRestore)await realRooms.restore();
+   if(!skipRoomRestore&&await realGames.restore())screen='real-game';
  }catch(error){
   realAccount=null;screen='auth';authMode='login';
   if(error.status===401){
-   realAuthState='anonymous';realAuthError='';realRoomConfirmation=null;realRooms.reset();
+   realAuthState='anonymous';realAuthError='';realRoomConfirmation=null;realRooms.reset();realGames.reset();
   }else{
    realAuthState='unavailable';
    realAuthError=error.message||'认证服务暂不可用，无法确认当前会话。';
@@ -296,6 +296,7 @@ async function submitRealLogin(form,data){
   screen='real-account';
   notice='';
   await realRooms.restore();
+  if(await realGames.restore())screen='real-game';
   render();
  }catch(error){
   if(form.isConnected)showFormFeedback(feedback,error.message||'登录失败，请稍后再试。','error');
@@ -307,7 +308,7 @@ async function submitRealLogin(form,data){
 }
 async function logoutRealSession(){
  if(realBusy||realAuthState!=='authenticated')return;
- realRooms.pauseNotifications();
+ realRooms.pauseNotifications();realGames.reset();
  realBusy=true;realAuthError='';render();
  try{
   await createAuthApi().logout();
@@ -435,7 +436,13 @@ root.addEventListener('click',e=>{
  const a=el.dataset.action;
  if(a==='noop')return;
  if(a==='requestRegistrationCode'){requestRealRegistrationCode(el);return;}
- if(a==='retryRealAuth'){restoreRealSession();return;}
+ if(a==='realGameRefresh'){void realGames.refresh();return;}
+  if(a==='realGameRetry'){void realGames.retry();return;}
+  if(a==='realGameEnd'){void realGames.complete();return;}
+  if(a==='realGameBack'){realGames.reset();screen='real-account';render();return;}
+  if(a==='realGameResume'){enterRealGame(realGames.state.gameId);return;}
+  if(a.startsWith('realPeek:')){void realGames.peek(Number(a.slice('realPeek:'.length)));return;}
+  if(a==='retryRealAuth'){restoreRealSession();return;}
  if(a==='realLogout'){logoutRealSession();return;}
  if(a==='realRoomCreate'&&realAuthState==='authenticated'&&screen==='real-account'){realRooms.createRoom();return;}
  if(a==='realRoomRefresh'&&realAuthState==='authenticated'&&screen==='real-account'){realRooms.refresh();return;}
@@ -513,15 +520,17 @@ setInterval(()=>{
 // missed while the page is backgrounded. Revalidate on return, not by polling.
 let roomFocusCheckScheduled=false;
 function recheckRoomOnFocus(){
- if(realAuthState!=='authenticated'||screen!=='real-account'||realBusy||
+ if(realAuthState!=='authenticated'||!['real-account','real-game'].includes(screen)||realBusy||
     roomFocusCheckScheduled)return;
  roomFocusCheckScheduled=true;
  // Coalesce focus + visibilitychange from the same foreground transition,
  // without suppressing a later real tab return shortly after a Kick.
  Promise.resolve().then(()=>{
   roomFocusCheckScheduled=false;
-  if(realAuthState==='authenticated'&&screen==='real-account'&&!realBusy)
-   realRooms.verifyOnReturn();
+  if(realAuthState==='authenticated'&&!realBusy){
+    if(screen==='real-account')realRooms.verifyOnReturn();
+    if(screen==='real-game')realGames.onReturn();
+   }
  });
 }
 window.addEventListener('focus',recheckRoomOnFocus);
@@ -530,7 +539,8 @@ if(typeof document.addEventListener==='function'){
   if(document.visibilityState==='visible')recheckRoomOnFocus();
  });
 }
-window.addEventListener('pagehide',()=>realRooms.pauseNotifications());
+window.addEventListener('pagehide',()=>{realRooms.pauseNotifications();realGames.reset({keepLocator:true});});
+ window.addEventListener('online',()=>{if(screen==='real-game')realGames.onReturn();});
 window.addEventListener('pageshow',e=>{if(e.persisted)restoreRealSession();});
 window.addEventListener('keydown',e=>{if(screen!=='real-account'&&e.altKey&&e.shiftKey&&e.key.toLowerCase()==='m'){e.preventDefault();confirm('模拟新设备接管','旧连接会停止接受受保护操作。','takeover');}});
 render();
