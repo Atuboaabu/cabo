@@ -173,7 +173,7 @@ export function createRealGameState({
   if(!state.gameId||!inWindow()||state.command)return false;
   const me=state.view.players.find(p=>p.account_id===getAccountId());
   if(!me||me.initial_peek_completed)return false;
-  if(kind==='peek'&&(state.privateCards.has(position)||me.initial_peek_confirmed_positions.includes(position)||
+  if(kind==='peek'&&(state.privateCards.has(position)||state.acceptedPositions.has(position)||me.initial_peek_confirmed_positions.includes(position)||
     me.initial_peek_confirmed_positions.length>=2||!Number.isInteger(position)||position<0||position>3))return false;
   const command={kind,position,requestId:globalThis.crypto.randomUUID(),unknown:false};
   state.command=command;state.error='';
