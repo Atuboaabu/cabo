@@ -5,7 +5,7 @@ export function realGameMarkup(s){
  const header='<section class="real-game-head"><div><span class="eyebrow">REAL GAME · FASTAPI</span><h1>真实 CABO 对局</h1><p class="hint">GameSession '+esc(s.gameId||'')+'</p></div><div class="button-row"><button type="button" class="outline" data-action="realGameRefresh">同步状态</button><button type="button" class="outline" data-action="realGameBack">返回账号</button></div></section>';
  if(!g)return header+'<article class="paper-card"><h2>验证游戏访问资格</h2><p role="status">'+esc(s.error||'正在读取服务器 GameView…')+'</p><button type="button" class="outline" data-action="realGameRefresh">重试读取</button></article>';
  const me=g.players.find(p=>p.account_id===g.viewer_account_id);
- const initial=g.phase==='InitialPeek',active=initial&&s.remainingSeconds>0&&!me?.initial_peek_completed;
+ const initial=g.phase==='InitialPeek',active=initial&&s.peekAllowed;
  const cards=p=>'<div class="real-game-hand">'+p.hand_cards.map(card=>{
   const own=p.account_id===g.viewer_account_id;
   const confirmed=initial&&own&&me.initial_peek_confirmed_positions.includes(card.position);
@@ -22,7 +22,7 @@ export function realGameMarkup(s){
   (initial?'<p class="hint">'+(p.initial_peek_completed?'已结束初始查看':'正在初始查看')+'</p>':'')+'</article>').join('');
  const status=initial?'<article class="paper-card"><h2>初始查看 · 共享倒计时 '+esc(s.remainingSeconds??0)+' 秒</h2>'+
   '<p>已确认 '+esc(me.initial_peek_confirmed_positions.length)+' / 2 个位置，剩余 '+esc(2-me.initial_peek_confirmed_positions.length)+' 次；每个位置只能查看一次。</p>'+
-  (me.initial_peek_completed?'<p role="status">你已结束查看，等待其他玩家或截止时间。</p>':
+  (me.initial_peek_completed?'<p role="status">你已结束查看，等待其他玩家或截止时间。</p>':s.command?.kind==='end'?'<p role="status">正在确认结束查看。</p>':
     active?'<button type="button" class="primary" data-action="realGameEnd" '+(s.command?'disabled':'')+'>主动结束 InitialPeek</button>':
     '<p role="status">查看窗口已结束，等待服务器推进阶段。</p>')+'</article>':
   '<article class="paper-card"><h2>PlayerTurn · 正常回合</h2>'+

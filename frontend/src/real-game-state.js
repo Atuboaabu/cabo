@@ -48,7 +48,7 @@ export function createRealGameState({
   if(nowServer()>=state.deadlineMs)expired=true;
   if(!inWindow())clearPrivate();
   emit();
-  if(state.remainingSeconds===0&&pollTimer==null&&timeoutAttempts===0)pollAfterDeadline();
+  if(expired&&pollTimer==null&&timeoutAttempts===0)pollAfterDeadline();
  }
  function pollAfterDeadline(){
   if(pollTimer!=null)return;
@@ -87,7 +87,7 @@ export function createRealGameState({
    onChanged:changed=>{if(current()&&changed.toLowerCase()===id.toLowerCase())void refresh();},
    onOpen:opened=>{
     if(!current()||opened.toLowerCase()!==id.toLowerCase())return;
-    clearHandshake();state.wsConnected=true;reconnectAttempt=0;emit();void refresh();
+    clearHandshake();state.wsConnected=true;reconnectAttempt=0;emit();void (async()=>{if(await refresh()&&inWindow())void loadPrivate();})();
    },
    onClosed:closed=>{
     if(!current()||closed.toLowerCase()!==id.toLowerCase())return;
@@ -169,7 +169,7 @@ export function createRealGameState({
   try{
    const v=await api.getInitialPeekView(state.gameId);
    if(token!==generation||seq!==privateRequest||!inWindow())return false;
-   if(v.account_id!==getAccountId()||Date.parse(v.deadline_at)!==state.deadlineMs||
+   if(v.game_session_id!==state.gameId||v.account_id!==getAccountId()||Date.parse(v.deadline_at)!==state.deadlineMs||
       Date.parse(v.server_time)>=state.deadlineMs){clearPrivate();emit();return false;}
    state.privateCards=new Map(v.revealed_cards.map(c=>[c.position,c.value]));
    state.remaining=v.remaining_peek_count;emit();return true;
@@ -224,8 +224,7 @@ export function createRealGameState({
       state.privateCards.set(command.position,out.peek_result.value);
    }else{
     if(command.kind==='end')endedLocally=false;
-    state.error=out.status==='IdentityConflict'?'请求 ID 与历史操作冲突。':
-      '请求未被服务器接受：'+(out.reason||out.status);
+    state.error=out.status==='IdentityConflict'?'请求 ID 与历史操作冲突。':'请求未被服务器接受，请同步状态。';
    }
    const message=state.error;
    emit();await refresh();
@@ -241,7 +240,7 @@ export function createRealGameState({
    }else{
     state.command=null;state.outcomeUnknown=false;state.error=e.message||'命令失败。';
     if(command.kind==='end')endedLocally=false;
-    if([401,403,404].includes(e.status))clearPrivate();
+    if([401,403,404,409].includes(e.status))clearPrivate();
     if(e.status===401)onUnauthorized();
    }
    emit();void refresh();return false;

@@ -40,7 +40,7 @@ function validOutcome(v,kind){
  return obj(v)&&['Accepted','Rejected','NotYetDetermined','IdentityConflict'].includes(v.status)&&
   typeof v.replayed==='boolean'&&(v.reason==null||typeof v.reason==='string')&&
   (kind==='peek'?(v.peek_result===null||(obj(v.peek_result)&&integer(v.peek_result.position)&&
-    integer(v.peek_result.value)&&integer(v.peek_result.remaining_peek_count)&&date(v.peek_result.deadline_at))):
+    v.peek_result.position>=0&&v.peek_result.position<=3&&integer(v.peek_result.value)&&v.peek_result.value>=0&&v.peek_result.value<=13&&integer(v.peek_result.remaining_peek_count)&&v.peek_result.remaining_peek_count>=0&&v.peek_result.remaining_peek_count<=2&&date(v.peek_result.deadline_at))):
    (v.complete_result===null||(obj(v.complete_result)&&typeof v.complete_result.all_players_completed==='boolean')));
 }
 export function createGameApi({baseUrl=getAuthApiBaseUrl(),fetchImpl=globalThis.fetch}={}){

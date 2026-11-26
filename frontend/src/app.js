@@ -445,9 +445,9 @@ root.addEventListener('click',e=>{
  const a=el.dataset.action;
  if(a==='noop')return;
  if(a==='requestRegistrationCode'){requestRealRegistrationCode(el);return;}
- if(a==='realGameRefresh'){void realGames.refresh();return;}
+ if(a==='realGameRefresh'){void realGames.sync();return;}
   if(a==='realGameRetry'){void realGames.retry();return;}
-  if(a==='realGameEnd'){void realGames.complete();return;}
+  if(a==='realGameEnd'){const s=realGames.state;const me=s.view?.players.find(p=>p.account_id===s.view.viewer_account_id);if(me&&me.initial_peek_confirmed_positions.length<2&&!window.confirm('剩余查看机会将作废，确认结束？'))return;void realGames.complete();return;}
   if(a==='realGameBack'){realGames.reset({keepLocator:true});screen='real-account';render();return;}
   if(a==='realGameResume'){const r=realRooms.state.view;enterRealGame(discoveredGame(r),r?.id);return;}
   if(a.startsWith('realPeek:')){void realGames.peek(Number(a.slice('realPeek:'.length)));return;}
@@ -551,6 +551,6 @@ if(typeof document.addEventListener==='function'){
 window.addEventListener('pagehide',()=>{realRooms.pauseNotifications();realGames.reset({keepLocator:true});});
 window.addEventListener('online',()=>{if(screen==='real-game')realGames.onReturn();});
 window.addEventListener('pageshow',e=>{if(e.persisted)restoreRealSession();});
-window.addEventListener('keydown',e=>{if(screen!=='real-account'&&e.altKey&&e.shiftKey&&e.key.toLowerCase()==='m'){e.preventDefault();confirm('模拟新设备接管','旧连接会停止接受受保护操作。','takeover');}});
+window.addEventListener('keydown',e=>{if(!['real-account','real-game'].includes(screen)&&e.altKey&&e.shiftKey&&e.key.toLowerCase()==='m'){e.preventDefault();confirm('模拟新设备接管','旧连接会停止接受受保护操作。','takeover');}});
 render();
 restoreRealSession();

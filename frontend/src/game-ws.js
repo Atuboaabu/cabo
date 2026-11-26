@@ -1,7 +1,7 @@
 /** Game WS is a notification channel, never a GameView or command transport. */
 import {getAuthApiBaseUrl} from './auth-api.js';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-export function gameWebSocketUrl(id,baseUrl=globalThis.CABO_GAME_WS_BASE_URL||getAuthApiBaseUrl(),protocol=globalThis.location?.protocol){
+export function gameWebSocketUrl(id,baseUrl=globalThis.CABO_GAME_WS_BASE_URL||globalThis.CABO_ROOM_WS_BASE_URL||getAuthApiBaseUrl(),protocol=globalThis.location?.protocol){
  if(typeof id!=='string'||!UUID.test(id))throw new TypeError('无效 GameSession ID');
  const root=getAuthApiBaseUrl({CABO_API_BASE_URL:baseUrl});
  const url=new URL('/ws/games/'+id,root);
