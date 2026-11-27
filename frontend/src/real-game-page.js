@@ -2,6 +2,7 @@
  * Private values are read only from the authorized ephemeral overlay.
  * No Mock state, actions, round number or game rules are imported here.
  */
+import {cardAbility,abilityLegendMarkup} from './card-abilities.js';
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const button=(label,action,kind='outline',disabled=false)=>'<button type="button" class="'+kind+'" data-action="'+esc(action)+'" '+(disabled?'disabled':'')+'>'+esc(label)+'</button>';
 export const timeText=seconds=>{
@@ -9,16 +10,22 @@ export const timeText=seconds=>{
  return String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0');
 };
 const phaseLabel=phase=>({InitialPeek:'初始查看',PlayerTurn:'玩家回合'}[phase]||phase);
+function abilityBadge(ability){
+ return '<span class="card-ability" aria-hidden="true"><b>'+esc(ability.name)+'</b><small>'+esc(ability.label)+'</small></span>';
+}
 function cardMarkup(card,own,active,s,confirmed,count){
  const peek=active&&own&&!card.face_up&&s.privateCards.has(card.position);
  const face=card.face_up===true||peek;
  const value=card.face_up===true?card.value:peek?s.privateCards.get(card.position):null;
+ const ability=face?cardAbility(value):null;
  const selectable=active&&own&&!card.face_up&&!confirmed.has(card.position)&&count<2&&!s.command&&!s.outcomeUnknown;
- return '<button type="button" class="playing-card '+(face?'face-up':'face-down')+(selectable?' selectable':'')+(own&&confirmed.has(card.position)?' peek-confirmed':'')+
+ const description=face?'牌面 '+esc(value)+(ability?'，'+ability.name+' 功能：'+esc(ability.effect):''):'背面';
+ const title=ability?' title="'+esc(ability.name+'：'+ability.effect)+'"':'';
+ return '<button type="button" class="playing-card '+(face?'face-up':'face-down')+(ability?' has-ability':'')+(selectable?' selectable':'')+(own&&confirmed.has(card.position)?' peek-confirmed':'')+
   '" '+(selectable?'data-action="realPeek:'+esc(card.position)+'"':'disabled')+
-  ' aria-label="第 '+(card.position+1)+' 张牌，'+(face?'牌面 '+esc(value):'背面')+(own&&confirmed.has(card.position)?'，已查看':'')+'">'+
+  ' aria-label="第 '+(card.position+1)+' 张牌，'+description+(own&&confirmed.has(card.position)?'，已查看':'')+'"'+title+'>'+
   '<span class="card-corner">'+(face?esc(value):'✦')+'</span><span class="card-center">'+(face?esc(value):'CABO')+
-  '</span><span class="card-corner bottom">'+(face?esc(value):'✦')+'</span></button>';
+  '</span>'+(ability?abilityBadge(ability):'<span class="card-corner bottom">'+(face?esc(value):'✦')+'</span>')+'</button>';
 }
 export function realGameMarkup(s){
  const g=s.view;
@@ -59,6 +66,7 @@ export function realGameMarkup(s){
   '<div class="piles"><div class="pile-slot"><button type="button" class="deck" disabled aria-label="抽牌堆"><span>CABO</span></button><span>抽牌堆 · '+esc(g.draw_pile.card_count)+'</span></div>'+
   '<div class="pile-slot"><button type="button" class="deck discarded" disabled aria-label="弃牌堆顶牌"><span>'+esc(g.discard_pile.top_card_value??'—')+'</span></button><span>弃牌堆 · '+esc(g.discard_pile.card_count)+'</span></div></div>'+
   '<div class="self-seat"><div class="self-name"><span class="player-bubble">你</span><strong>'+esc(me.username)+'</strong>'+mark(me)+'</div><div class="self-hand">'+cards(me,true)+'</div><small>'+me.hand_cards.length+' 张牌</small></div></div></div>'+
+  abilityLegendMarkup+
   '<section class="action-panel" aria-live="polite"><div><span class="eyebrow">'+(initial?'初始查看':acting===me.account_id?'你的回合':'等待行动')+'</span><h2>'+esc(title)+'</h2><p>'+esc(description)+'</p>'+feedback+'</div><div class="action-buttons">'+actions+'</div></section>'+
   '<div class="real-table-bottom"><span class="connection '+(s.wsConnected?'connected':'disconnected')+'">● '+(s.wsConnected?'已连接':'未连接')+'</span>'+toolbar+'</div></div>';
 }
