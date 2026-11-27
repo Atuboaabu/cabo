@@ -729,7 +729,7 @@ def apply_draw_from_drawpile(
         game_session_id
     )
 
-    if (game_session.state != "Playing" and 
+    if (game_session.state != "Playing" or 
         game_session.phase != "PlayerTurn"):
         raise exceptions.InvalidGameStateException()
 
@@ -741,6 +741,10 @@ def apply_draw_from_drawpile(
     ).scalar_one_or_none()
     if game_turn is None:
         raise exceptions.GameNotAccessibleException()
+    if game_turn.state != "AwaitingAction":
+        raise exceptions.GameTurnStateErrorException()
+    if game_turn.deadline_at <= datetime.now(timezone.utc):
+        raise exceptions.GameTurnTimeoutException()
     
     if game_turn.game_player_id != game_player.id:
         raise exceptions.RequesterWrongException()
@@ -750,7 +754,7 @@ def apply_draw_from_drawpile(
             GameCard.game_session_id == game_session.id,
             GameCard.location == "DrawPile"
         ).order_by(
-            GameCard.position.desc()
+            GameCard.position
         ).limit(1)
     ).scalar_one_or_none()
     if draw_card is None:

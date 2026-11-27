@@ -4,7 +4,8 @@ from starlette.concurrency import run_in_threadpool
 
 from app.schemas import (InitialPeekCommandOutcome, InitialPeekCommandRequest,
                          GameView, InitialPeekPrivateView, InitialPeekCompleteCommandOutcome,
-                         InitialPeekCompleteCommandRequest)
+                         InitialPeekCompleteCommandRequest, DrawPilePrivateViewCommandOutCome,
+                         DrawPilePrivateViewCommandRequest)
 from app.depencicies import OriginCheckDep, SessionDep, ActiveUserDep
 from app.services import game_command, game
 from app.websocket.notification import notification_game_changed
@@ -92,6 +93,33 @@ async def complete_initial_peek_command(
 
     outcome = await run_in_threadpool(
         game_command.execute_complete_initial_peek_command,
+        token,
+        game_session_id,
+        body.request_id
+    )
+    
+    if outcome.status == "Accepted" and not outcome.replayed:
+        await notification_game_changed(game_session_id)
+
+    return outcome
+
+router.post(
+    "/{game_session_id}/commands/draw-from-drawpile",
+    status_code=status.HTTP_200_OK,
+    response_model=DrawPilePrivateViewCommandOutCome,
+    dependencies=[OriginCheckDep]
+)
+async def draw_from_drawpile_command(
+    request: Request,
+    game_session_id: UUID,
+    body: DrawPilePrivateViewCommandRequest
+):  
+    token = request.cookies.get("session_token")
+    if not token:
+        raise exceptions.InvalidCookieException()
+
+    outcome = await run_in_threadpool(
+        game_command.execute_draw_from_drawpile_command,
         token,
         game_session_id,
         body.request_id

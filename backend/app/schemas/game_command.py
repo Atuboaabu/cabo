@@ -2,7 +2,8 @@ from pydantic import BaseModel, Field, ConfigDict
 from typing import Literal
 from uuid import UUID
 
-from app.schemas.game import InitialPeekResult, InitialPeekCompleteResult
+from app.schemas.game import (InitialPeekResult, InitialPeekCompleteResult,
+                              DrawPilePrivateView)
 
 class InitialPeekCommandPayload(BaseModel):
     model_config = ConfigDict(
@@ -40,4 +41,18 @@ class InitialPeekCompleteCommandOutcome(BaseModel):
     complete_result: InitialPeekCompleteResult | None = None
 
 class InitialPeekCompleteCommandRequest(BaseModel):
+    request_id: UUID
+
+class DrawPilePrivateViewCommandOutCome(BaseModel):
+    status: Literal[
+        "Accepted",
+        "Rejected",
+        "NotYetDetermined",
+        "IdentityConflict"
+    ]
+    replayed: bool
+    reason: str | None = None
+    draw_pile_result: DrawPilePrivateView | None = None
+
+class DrawPilePrivateViewCommandRequest(BaseModel):
     request_id: UUID

@@ -406,3 +406,29 @@ def register_exception_handlers(app: FastAPI)->None:
                 "detail": "Draw already exhansted" 
             }
         )
+
+    @app.exception_handler(exceptions.GameTurnStateErrorException)
+    async def gameturn_state_error_handle(
+        request: Request,
+        exc: exceptions.GameTurnStateErrorException
+    ):
+        return JSONResponse(
+            status_code = status.HTTP_409_CONFLICT,
+            content = {
+                "code": "GAMETURN_STATE_ERROR",
+                "detail": "Gameturn state error" 
+            }
+        )
+    
+    @app.exception_handler(exceptions.GameTurnStateErrorException)
+    async def gameturn_timeout_handle(
+        request: Request,
+        exc: exceptions.GameTurnStateErrorException
+    ):
+        return JSONResponse(
+            status_code = status.HTTP_409_CONFLICT,
+            content = {
+                "code": "GAMETURN_TIMEOUT",
+                "detail": "Gameturn already timeout" 
+            }
+        )

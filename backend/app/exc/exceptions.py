@@ -97,3 +97,9 @@ class GameTurnAlreadyCreatedException(Exception):
 
 class DrawPileExhaustedException(Exception):
     pass
+
+class GameTurnTimeoutException(Exception):
+    pass
+
+class GameTurnStateErrorException(Exception):
+    pass

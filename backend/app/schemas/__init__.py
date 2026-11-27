@@ -11,4 +11,6 @@ from .game import (GameStartResponse, InitialPeekResult,
                    InitialPeekCardView, InitialPeekPrivateView,)
 from .game_command import (InitialPeekCommandPayload, InitialPeekCommandOutcome,
                            InitialPeekCommandRequest, InitialPeekCompleteCommandOutcome,
-                           InitialPeekCompleteCommandRequest)
+                           InitialPeekCompleteCommandRequest,
+                           DrawPilePrivateViewCommandOutCome,
+                           DrawPilePrivateViewCommandRequest)
