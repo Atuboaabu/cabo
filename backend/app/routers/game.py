@@ -5,7 +5,8 @@ from starlette.concurrency import run_in_threadpool
 from app.schemas import (InitialPeekCommandOutcome, InitialPeekCommandRequest,
                          GameView, InitialPeekPrivateView, InitialPeekCompleteCommandOutcome,
                          InitialPeekCompleteCommandRequest, DrawPilePrivateViewCommandOutCome,
-                         DrawPilePrivateViewCommandRequest, DrawPilePrivateView)
+                         DrawPilePrivateViewCommandRequest, DrawPilePrivateView,
+                         TakeFromDiscardPileCommandRequest, TakeFromDiscardPileCommandOutcome,)
 from app.depencicies import OriginCheckDep, SessionDep, ActiveUserDep
 from app.services import game_command, game
 from app.websocket.notification import notification_game_changed
@@ -136,6 +137,33 @@ async def draw_from_drawpile_command(
 
     outcome = await run_in_threadpool(
         game_command.execute_draw_from_drawpile_command,
+        token,
+        game_session_id,
+        body.request_id
+    )
+    
+    if outcome.status == "Accepted" and not outcome.replayed:
+        await notification_game_changed(game_session_id)
+
+    return outcome
+
+@router.post(
+    "/{game_session_id}/commands/take-from-discardpile",
+    status_code=status.HTTP_200_OK,
+    response_model=TakeFromDiscardPileCommandOutcome,
+    dependencies=[OriginCheckDep]
+)
+async def take_from_discardpile_command(
+    request: Request,
+    game_session_id: UUID,
+    body: TakeFromDiscardPileCommandRequest
+):  
+    token = request.cookies.get("session_token")
+    if not token:
+        raise exceptions.InvalidCookieException()
+
+    outcome = await run_in_threadpool(
+        game_command.execute_take_from_discardpile_command,
         token,
         game_session_id,
         body.request_id

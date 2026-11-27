@@ -104,3 +104,6 @@ class InitialPeekPrivateView(BaseModel):
 
 class DrawPilePrivateView(BaseModel):
     value: int = Field(ge=0, le=13)
+
+class TakeFromDiscardPileResult(BaseModel):
+    value: int = Field(ge=0, le=13)

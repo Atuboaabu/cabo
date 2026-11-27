@@ -6,9 +6,9 @@ from sqlalchemy.dialects.postgresql import insert
 from datetime import datetime, timezone
 
 from app.models import GameCommandRequest, UserAccount, GamePlayer
-from app.schemas import (InitialPeekCommandPayload, InitialPeekResult, InitialPeekCompleteResult,
+from app.schemas import (InitialPeekCommandPayload, InitialPeekCompleteResult,
                          InitialPeekCommandOutcome, InitialPeekCompleteCommandOutcome,
-                         DrawPilePrivateViewCommandOutCome, DrawPilePrivateView)
+                         DrawPilePrivateViewCommandOutCome, TakeFromDiscardPileCommandOutcome)
 from app.services import game_context, game, auth
 from app.exc import exceptions
 from app.database import engine
@@ -21,7 +21,7 @@ def normalize_command_payload(
         return InitialPeekCommandPayload.model_validate(
             payload
         ).model_dump()
-    elif command_type in ("CompleteInitialPeek", "DrawFromDrawPile"):
+    elif command_type in ("CompleteInitialPeek", "DrawFromDrawPile", "TakeFromDiscardPile"):
         return {}
     raise ValueError("Unsupported command type")
 
@@ -111,6 +111,7 @@ BUSINESS_REJECTIONS = {
     exceptions.DrawPileExhaustedException: "DRAWPILE_EXHAUSTED",
     exceptions.GameTurnTimeoutException: "GAMETURN_TIMEOUT",
     exceptions.GameTurnStateErrorException: "GAMETURN_STATE_ERROR",
+    exceptions.NoDiscardPileException: "NO_DISCARDPILE",
 }
 
 def initial_peek_command(
@@ -473,6 +474,121 @@ def execute_draw_from_drawpile_command(
         )
 
         return draw_from_drawpile_command(
+            session,
+            user,
+            game_session_id,
+            request_id
+        )
+
+def take_from_discardpile_command(
+    session: Session,
+    user_account: UserAccount,
+    game_session_id: UUID,
+    request_id: UUID
+)->TakeFromDiscardPileCommandOutcome:
+    try:
+        payload = normalize_command_payload(
+            "TakeFromDiscardPile",
+            {}
+        )
+        game_session = game_context.get_locked_game_session(
+            session,
+            game_session_id
+        )
+
+        game_player = session.execute(
+            select(GamePlayer).where(
+                GamePlayer.game_session_id == game_session_id,
+                GamePlayer.account_id == user_account.id
+            )
+        ).scalar_one_or_none()
+
+        if game_session is None or game_player is None:
+            raise exceptions.GameNotAccessibleException()
+    
+        lookup = create_pending_command_request(
+            session,
+            game_session_id,
+            user_account.id,
+            request_id,
+            "TakeFromDiscardPile",
+            payload
+        )
+
+        request = lookup.request
+
+        if not lookup.created:
+            if not is_same_command_request(
+                request,
+                "TakeFromDiscardPile",
+                payload
+            ):
+                outcome = TakeFromDiscardPileCommandOutcome(
+                    status="IdentityConflict",
+                    replayed=True
+                )
+            elif request.status == "Pending":
+                outcome = TakeFromDiscardPileCommandOutcome(
+                    status="NotYetDetermined",
+                    replayed=True
+                )
+            else:
+                outcome = TakeFromDiscardPileCommandOutcome(
+                    status=request.status,
+                    replayed=True,
+                    reason=(
+                        request.result_payload or {}
+                    ).get("reason"),
+                )
+
+            session.commit()
+            return outcome
+        try:
+            discard_pile_result = game.apply_take_from_discardpile(
+                session,
+                user_account,
+                game_session_id
+            )
+        except tuple(BUSINESS_REJECTIONS) as exc:
+            reason = BUSINESS_REJECTIONS[type(exc)]
+            request.status = "Rejected"
+            request.decided_at = datetime.now(timezone.utc)
+            request.result_payload = {"reason": reason}
+
+            session.commit()
+            return TakeFromDiscardPileCommandOutcome(
+                status="Rejected",
+                replayed=False,
+                reason=reason
+            )
+
+        request.status = "Accepted"
+        request.decided_at = datetime.now(timezone.utc)
+        request.result_payload = {}
+        session.commit()
+
+        return TakeFromDiscardPileCommandOutcome(
+            status="Accepted",
+            replayed=False,
+            discard_pile_result=discard_pile_result
+        )
+
+    except Exception:
+        session.rollback()
+        raise
+
+def execute_take_from_discardpile_command(
+    token: str,
+    game_session_id: UUID,
+    request_id: UUID,
+)->TakeFromDiscardPileCommandOutcome:
+    with Session(engine) as session:
+        user = auth.get_authenticated_account(
+            session,
+            token
+        )
+
+        return take_from_discardpile_command(
             session,
             user,
             game_session_id,

@@ -103,3 +103,6 @@ class GameTurnTimeoutException(Exception):
 
 class GameTurnStateErrorException(Exception):
     pass
+
+class NoDiscardPileException(Exception):
+    pass

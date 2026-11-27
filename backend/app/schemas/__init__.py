@@ -8,9 +8,12 @@ from .game import (GameStartResponse, InitialPeekResult,
                    FaceDownCardView, FaceUpCardView, CardView,
                    GamePlayerView, DrawPileView, DiscardPileView,
                    ActiveTurnView, GameView, DrawPilePrivateView,
-                   InitialPeekCardView, InitialPeekPrivateView,)
+                   InitialPeekCardView, InitialPeekPrivateView,
+                   TakeFromDiscardPileResult,)
 from .game_command import (InitialPeekCommandPayload, InitialPeekCommandOutcome,
                            InitialPeekCommandRequest, InitialPeekCompleteCommandOutcome,
                            InitialPeekCompleteCommandRequest,
                            DrawPilePrivateViewCommandOutCome,
-                           DrawPilePrivateViewCommandRequest)
+                           DrawPilePrivateViewCommandRequest,
+                           TakeFromDiscardPileCommandOutcome,
+                           TakeFromDiscardPileCommandRequest,)

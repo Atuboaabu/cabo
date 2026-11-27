@@ -13,7 +13,7 @@ from app.schemas import (GameStartResponse, InitialPeekResult,
                          GamePlayerView, GameView, FaceDownCardView,
                          DrawPileView, DiscardPileView, DrawPilePrivateView, 
                          ActiveTurnView, InitialPeekCardView,
-                         InitialPeekPrivateView)
+                         InitialPeekPrivateView, TakeFromDiscardPileResult)
 from app.database import engine
 from app.services import auth, game_context
 from app.game_logic import (build_cabo_deck, shuffle_deck, deal_initial_cards,
@@ -841,3 +841,56 @@ def get_current_action_private_view(
     except Exception:
         session.rollback()
         raise
+
+def apply_take_from_discardpile(
+    session: Session,
+    user_account: UserAccount,
+    game_session_id: UUID,
+)->TakeFromDiscardPileResult:
+    game_session, game_player = game_context.get_locked_game_context(
+        session,
+        user_account,
+        game_session_id
+    )
+
+    if (game_session.state != "Playing" or 
+        game_session.phase != "PlayerTurn"):
+        raise exceptions.InvalidGameStateException()
+
+    game_turn = session.execute(
+        select(GameTurn).where(
+            GameTurn.game_session_id == game_session.id,
+            GameTurn.ended_at.is_(None)
+        )
+    ).scalar_one_or_none()
+    if game_turn is None:
+        raise exceptions.GameNotAccessibleException()
+    if game_turn.state != "AwaitingAction":
+        raise exceptions.GameTurnStateErrorException()
+    if game_turn.deadline_at <= datetime.now(timezone.utc):
+        raise exceptions.GameTurnTimeoutException()
+    
+    if game_turn.game_player_id != game_player.id:
+        raise exceptions.RequesterWrongException()
+    
+    discard_card = session.execute(
+        select(GameCard).where(
+            GameCard.game_session_id == game_session.id,
+            GameCard.location == "DiscardPile"
+        ).order_by(
+            GameCard.position.desc()
+        ).limit(1)
+    ).scalar_one_or_none()
+    if discard_card is None:
+        raise exceptions.NoDiscardPileException()
+    
+    discard_card.location = "PendingAction"
+    game_turn.main_card_id = discard_card.id
+    game_turn.main_card_source = "DiscardPile"
+    game_turn.state = "AwaitingCardDecision"
+    game_session.state_revision += 1
+
+    result = TakeFromDiscardPileResult(value=discard_card.value)
+
+    session.flush()
+    return result

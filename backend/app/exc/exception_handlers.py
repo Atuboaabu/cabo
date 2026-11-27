@@ -432,3 +432,16 @@ def register_exception_handlers(app: FastAPI)->None:
                 "detail": "Gameturn already timeout" 
             }
         )
+    
+    @app.exception_handler(exceptions.NoDiscardPileException)
+    async def no_discardpile_handle(
+        request: Request,
+        exc: exceptions.NoDiscardPileException
+    ):
+        return JSONResponse(
+            status_code = status.HTTP_409_CONFLICT,
+            content = {
+                "code": "NO_DISCARDPILE",
+                "detail": "No discardpile" 
+            }
+        )

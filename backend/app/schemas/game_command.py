@@ -3,7 +3,7 @@ from typing import Literal
 from uuid import UUID
 
 from app.schemas.game import (InitialPeekResult, InitialPeekCompleteResult,
-                              DrawPilePrivateView)
+                              DrawPilePrivateView, TakeFromDiscardPileResult)
 
 class InitialPeekCommandPayload(BaseModel):
     model_config = ConfigDict(
@@ -55,4 +55,18 @@ class DrawPilePrivateViewCommandOutCome(BaseModel):
     draw_pile_result: DrawPilePrivateView | None = None
 
 class DrawPilePrivateViewCommandRequest(BaseModel):
+    request_id: UUID
+
+class TakeFromDiscardPileCommandOutcome(BaseModel):
+    status: Literal[
+        "Accepted",
+        "Rejected",
+        "NotYetDetermined",
+        "IdentityConflict"
+    ]
+    replayed: bool
+    reason: str | None = None
+    discard_pile_result: TakeFromDiscardPileResult | None = None
+
+class TakeFromDiscardPileCommandRequest(BaseModel):
     request_id: UUID
