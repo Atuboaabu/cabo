@@ -159,6 +159,7 @@ export function createRealGameState({
     state.turnDeadlineMs=Number.isFinite(turnDeadline)?turnDeadline:null;
     state.turnRemainingSeconds=state.turnDeadlineMs==null?null:Math.max(0,Math.ceil((state.turnDeadlineMs-nowServer())/1000));
     if(v.phase==='PlayerTurn'&&clockTimer==null)clockTimer=setIntervalFn(updateClock,1000);
+    if(v.phase!=='PlayerTurn'&&clockTimer!=null){clearIntervalFn(clockTimer);clockTimer=null;}
     if(pollTimer!=null)clearTimeoutFn(pollTimer);pollTimer=null;
    }
    emit();

@@ -10,7 +10,7 @@ from app.schemas import (InitialPeekCommandPayload, InitialPeekCompleteResult,
                          InitialPeekCommandOutcome, InitialPeekCompleteCommandOutcome,
                          DrawPilePrivateViewCommandOutCome, TakeFromDiscardPileCommandOutcome,
                          SingleCardReplaceCommandOutcome, SingleCardReplaceCommandPayload)
-from app.services import game_context, game, auth
+from app.services import game_context, game, game_turn, auth
 from app.exc import exceptions
 from app.database import engine
 
@@ -666,7 +666,7 @@ def single_card_replace_command(
             session.commit()
             return outcome
         try:
-            game.apply_single_card_replace(
+            completed_turn = game.apply_single_card_replace(
                 session,
                 user_account,
                 game_session_id,
@@ -684,6 +684,12 @@ def single_card_replace_command(
                 replayed=False,
                 reason=reason
             )
+
+        game_turn.advance_turn_after_completion(
+            session,
+            game_session,
+            completed_turn
+        )
 
         request.status = "Accepted"
         request.decided_at = datetime.now(timezone.utc)

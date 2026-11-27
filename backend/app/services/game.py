@@ -595,6 +595,9 @@ def get_game_view(
                 started_at=game_turn.started_at,
                 deadline_at=game_turn.deadline_at
             )
+        elif game_session.phase == "Settling":
+            if game_turn is not None:
+                raise exceptions.InvalidGameStateException()
         else:
             raise exceptions.InvalidGameStateException()
 
@@ -915,7 +918,7 @@ def apply_single_card_replace(
     user_account: UserAccount,
     game_session_id: UUID,
     position: int,
-)->None:
+)->GameTurn:
     game_session, game_player = game_context.get_locked_game_context(
         session,
         user_account,
@@ -996,3 +999,4 @@ def apply_single_card_replace(
     game_session.state_revision += 1
 
     session.flush()
+    return game_turn

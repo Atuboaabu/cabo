@@ -12,7 +12,7 @@ export class GameApiError extends Error {
 }
 function validGame(v,id){
  return obj(v)&&uuid(v.id)&&v.id.toLowerCase()===id.toLowerCase()&&uuid(v.room_id)&&
-  v.state==='Playing'&&['InitialPeek','PlayerTurn'].includes(v.phase)&&uuid(v.viewer_account_id)&&
+  v.state==='Playing'&&['InitialPeek','PlayerTurn','Settling'].includes(v.phase)&&uuid(v.viewer_account_id)&&
   integer(v.schema_version)&&v.schema_version===1&&integer(v.state_revision)&&v.state_revision>=0&&
   date(v.server_time)&&Array.isArray(v.players)&&v.players.length>=2&&v.players.length<=4&&
   v.players.some(p=>p.account_id===v.viewer_account_id)&&v.players.every(p=>
@@ -26,6 +26,7 @@ function validGame(v,id){
   obj(v.discard_pile)&&integer(v.discard_pile.card_count)&&v.discard_pile.card_count>=0&&
   (v.discard_pile.top_card_value===null||integer(v.discard_pile.top_card_value)&&v.discard_pile.top_card_value>=0&&v.discard_pile.top_card_value<=13)&&
   (v.phase!=='InitialPeek'||date(v.initial_peek_deadline_at))&&
+  (v.phase!=='Settling'||v.active_turn===null)&&
   (v.active_turn===null||(obj(v.active_turn)&&uuid(v.active_turn.id)&&uuid(v.active_turn.acting_account_id)&&
    integer(v.active_turn.turn_number)&&date(v.active_turn.deadline_at)));
 }

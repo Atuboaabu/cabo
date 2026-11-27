@@ -24,7 +24,7 @@ class GameSession(Base):
             postgresql_where=text("state IN ('Starting', 'Playing')")
         ),
         CheckConstraint(
-            "phase IN ('InitialPeek', 'PlayerTurn')",
+            "phase IN ('InitialPeek', 'PlayerTurn', 'Settling')",
             name="ck_game_sessions_phase"
         ),
         CheckConstraint(
