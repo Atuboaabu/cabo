@@ -827,7 +827,8 @@ def get_current_action_private_view(
         game_card = session.execute(
             select(GameCard).where(
                 GameCard.id == game_turn.main_card_id,
-                GameCard.game_session_id == game_session_id
+                GameCard.game_session_id == game_session_id,
+                GameCard.location == "PendingAction"
             )
         ).scalar_one_or_none()
         if game_card is None:
