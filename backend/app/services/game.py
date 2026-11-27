@@ -127,7 +127,8 @@ def start_game(
             value=initial_deal_result.first_discard,
             location="DiscardPile",
             owner_game_player_id=None,
-            position=0
+            position=0,
+            face_up = True
         )
         session.add(first_discard_card)
 
@@ -509,7 +510,7 @@ def get_game_view(
 
         players_views: list[GamePlayerView] = []
         for game_player, username in players_info:
-            hand_cards = hand_cards_by_playerid.get(game_player.id)
+            hand_cards = hand_cards_by_playerid.get(game_player.id, [])
 
             players_views.append(
                 GamePlayerView(
