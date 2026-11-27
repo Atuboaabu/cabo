@@ -16,4 +16,7 @@ from .game_command import (InitialPeekCommandPayload, InitialPeekCommandOutcome,
                            DrawPilePrivateViewCommandOutCome,
                            DrawPilePrivateViewCommandRequest,
                            TakeFromDiscardPileCommandOutcome,
-                           TakeFromDiscardPileCommandRequest,)
+                           TakeFromDiscardPileCommandRequest,
+                           SingleCardReplaceCommandPayload,
+                           SingleCardReplaceCommandOutcome,
+                           SingleCardReplaceCommandRequest,)

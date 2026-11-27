@@ -909,3 +909,79 @@ def apply_take_from_discardpile(
 
     session.flush()
     return result
+
+def apply_single_card_replace(
+    session: Session,
+    user_account: UserAccount,
+    game_session_id: UUID,
+    position: int,
+)->None:
+    game_session, game_player = game_context.get_locked_game_context(
+        session,
+        user_account,
+        game_session_id
+    )
+
+    if (game_session.state != "Playing" or 
+        game_session.phase != "PlayerTurn"):
+        raise exceptions.InvalidGameStateException()
+
+    game_turn = session.execute(
+        select(GameTurn).where(
+            GameTurn.game_session_id == game_session.id,
+            GameTurn.ended_at.is_(None)
+        )
+    ).scalar_one_or_none()
+    if game_turn is None:
+        raise exceptions.GameNotAccessibleException()
+    if game_turn.state != "AwaitingCardDecision":
+        raise exceptions.GameTurnStateErrorException()
+    if game_turn.deadline_at <= datetime.now(timezone.utc):
+        raise exceptions.GameTurnTimeoutException()
+    if game_turn.game_player_id != game_player.id:
+        raise exceptions.RequesterWrongException()
+    if (game_turn.main_card_id is None or
+        game_turn.main_card_source is None or
+        game_turn.main_card_source not in ("DrawPile", "DiscardPile")):
+        raise exceptions.InvalidGameStateException()
+    
+    main_card = session.execute(
+        select(GameCard).where(
+            GameCard.id == game_turn.main_card_id,
+            GameCard.game_session_id == game_session.id,
+            GameCard.location == "PendingAction"
+        )
+    ).scalar_one_or_none()
+    if main_card is None:
+        raise exceptions.InvalidGameStateException()
+
+    old_card = session.execute(
+        select(GameCard).where(
+            GameCard.owner_game_player_id == game_player.id,
+            GameCard.game_session_id == game_session.id,
+            GameCard.position == position,
+            GameCard.location == "Hand"
+        )
+    ).scalar_one_or_none()
+    if old_card is None:
+        raise exceptions.InvalidGameStateException()
+    
+    discard_position = main_card.position
+    hand_position = old_card.position
+
+    old_card.location = "DiscardPile"
+    old_card.owner_game_player_id = None
+    old_card.face_up = True
+    old_card.position = discard_position
+
+    main_card.location = "Hand"
+    main_card.owner_game_player_id = game_player.id
+    main_card.face_up = (game_turn.main_card_source == "DiscardPile")
+    main_card.position = hand_position
+
+    game_turn.state = "Completed"
+    game_turn.ended_at = datetime.now(timezone.utc)
+
+    game_session.state_revision += 1
+
+    session.flush()

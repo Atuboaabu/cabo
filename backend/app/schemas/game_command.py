@@ -70,3 +70,24 @@ class TakeFromDiscardPileCommandOutcome(BaseModel):
 
 class TakeFromDiscardPileCommandRequest(BaseModel):
     request_id: UUID
+
+class SingleCardReplaceCommandOutcome(BaseModel):
+    status: Literal[
+        "Accepted",
+        "Rejected",
+        "NotYetDetermined",
+        "IdentityConflict"
+    ]
+    replayed: bool
+    reason: str | None = None
+
+class SingleCardReplaceCommandRequest(BaseModel):
+    request_id: UUID
+
+class SingleCardReplaceCommandPayload(BaseModel):
+    model_config = ConfigDict(
+        strict=True,
+        extra="forbid"
+    )
+
+    position: int = Field(ge=0, le=3)

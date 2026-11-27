@@ -8,7 +8,8 @@ from datetime import datetime, timezone
 from app.models import GameCommandRequest, UserAccount, GamePlayer
 from app.schemas import (InitialPeekCommandPayload, InitialPeekCompleteResult,
                          InitialPeekCommandOutcome, InitialPeekCompleteCommandOutcome,
-                         DrawPilePrivateViewCommandOutCome, TakeFromDiscardPileCommandOutcome)
+                         DrawPilePrivateViewCommandOutCome, TakeFromDiscardPileCommandOutcome,
+                         SingleCardReplaceCommandOutcome, SingleCardReplaceCommandPayload)
 from app.services import game_context, game, auth
 from app.exc import exceptions
 from app.database import engine
@@ -23,6 +24,10 @@ def normalize_command_payload(
         ).model_dump()
     elif command_type in ("CompleteInitialPeek", "DrawFromDrawPile", "TakeFromDiscardPile"):
         return {}
+    elif command_type == "SingleCardReplace":
+        return SingleCardReplaceCommandPayload.model_validate(
+            payload
+        ).model_dump()
     raise ValueError("Unsupported command type")
 
 def get_command_request(
@@ -593,4 +598,122 @@ def execute_take_from_discardpile_command(
             user,
             game_session_id,
             request_id
+        )
+
+def sigle_card_replace_command(
+    session: Session,
+    user_account: UserAccount,
+    game_session_id: UUID,
+    request_id: UUID,
+    position: int,
+)->SingleCardReplaceCommandOutcome:
+    try:
+        payload = normalize_command_payload(
+            "SingleCardReplace",
+            {"position": position}
+        )
+        game_session = game_context.get_locked_game_session(
+            session,
+            game_session_id
+        )
+
+        game_player = session.execute(
+            select(GamePlayer).where(
+                GamePlayer.game_session_id == game_session_id,
+                GamePlayer.account_id == user_account.id
+            )
+        ).scalar_one_or_none()
+
+        if game_session is None or game_player is None:
+            raise exceptions.GameNotAccessibleException()
+    
+        lookup = create_pending_command_request(
+            session,
+            game_session_id,
+            user_account.id,
+            request_id,
+            "SingleCardReplace",
+            payload
+        )
+
+        request = lookup.request
+
+        if not lookup.created:
+            if not is_same_command_request(
+                request,
+                "SingleCardReplace",
+                payload
+            ):
+                outcome = SingleCardReplaceCommandOutcome(
+                    status="IdentityConflict",
+                    replayed=True
+                )
+            elif request.status == "Pending":
+                outcome = SingleCardReplaceCommandOutcome(
+                    status="NotYetDetermined",
+                    replayed=True
+                )
+            else:
+                outcome = SingleCardReplaceCommandOutcome(
+                    status=request.status,
+                    replayed=True,
+                    reason=(
+                        request.result_payload or {}
+                    ).get("reason"),
+                )
+
+            session.commit()
+            return outcome
+        try:
+            game.apply_single_card_replace(
+                session,
+                user_account,
+                game_session_id,
+                position
+            )
+        except tuple(BUSINESS_REJECTIONS) as exc:
+            reason = BUSINESS_REJECTIONS[type(exc)]
+            request.status = "Rejected"
+            request.decided_at = datetime.now(timezone.utc)
+            request.result_payload = {"reason": reason}
+
+            session.commit()
+            return SingleCardReplaceCommandOutcome(
+                status="Rejected",
+                replayed=False,
+                reason=reason
+            )
+
+        request.status = "Accepted"
+        request.decided_at = datetime.now(timezone.utc)
+        request.result_payload = {}
+        session.commit()
+
+        return SingleCardReplaceCommandOutcome(
+            status="Accepted",
+            replayed=False,
+        )
+
+    except Exception:
+        session.rollback()
+        raise
+
+def execute_sigle_card_replace_command(
+    token: str,
+    game_session_id: UUID,
+    request_id: UUID,
+    position: int,
+)->SingleCardReplaceCommandOutcome:
+    with Session(engine) as session:
+        user = auth.get_authenticated_account(
+            session,
+            token
+        )
+
+        return sigle_card_replace_command(
+            session,
+            user,
+            game_session_id,
+            request_id,
+            position
         )
