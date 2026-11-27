@@ -21,7 +21,7 @@ def normalize_command_payload(
         return InitialPeekCommandPayload.model_validate(
             payload
         ).model_dump()
-    elif command_type == "CompleteInitialPeek":
+    elif command_type in ("CompleteInitialPeek", "DrawFromDrawPile"):
         return {}
     raise ValueError("Unsupported command type")
 
@@ -419,13 +419,6 @@ def draw_from_drawpile_command(
                     reason=(
                         request.result_payload or {}
                     ).get("reason"),
-                    draw_pile_result=(
-                        DrawPilePrivateView.model_validate(
-                            request.result_payload
-                        )
-                        if request.status == "Accepted"
-                        else None
-                    )
                 )
 
             session.commit()

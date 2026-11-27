@@ -420,10 +420,10 @@ def register_exception_handlers(app: FastAPI)->None:
             }
         )
     
-    @app.exception_handler(exceptions.GameTurnStateErrorException)
+    @app.exception_handler(exceptions.GameTurnTimeoutException)
     async def gameturn_timeout_handle(
         request: Request,
-        exc: exceptions.GameTurnStateErrorException
+        exc: exceptions.GameTurnTimeoutException
     ):
         return JSONResponse(
             status_code = status.HTTP_409_CONFLICT,

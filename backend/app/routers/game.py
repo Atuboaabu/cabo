@@ -103,7 +103,7 @@ async def complete_initial_peek_command(
 
     return outcome
 
-router.post(
+@router.post(
     "/{game_session_id}/commands/draw-from-drawpile",
     status_code=status.HTTP_200_OK,
     response_model=DrawPilePrivateViewCommandOutCome,
