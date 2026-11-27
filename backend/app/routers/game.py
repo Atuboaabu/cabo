@@ -5,7 +5,7 @@ from starlette.concurrency import run_in_threadpool
 from app.schemas import (InitialPeekCommandOutcome, InitialPeekCommandRequest,
                          GameView, InitialPeekPrivateView, InitialPeekCompleteCommandOutcome,
                          InitialPeekCompleteCommandRequest, DrawPilePrivateViewCommandOutCome,
-                         DrawPilePrivateViewCommandRequest)
+                         DrawPilePrivateViewCommandRequest, DrawPilePrivateView)
 from app.depencicies import OriginCheckDep, SessionDep, ActiveUserDep
 from app.services import game_command, game
 from app.websocket.notification import notification_game_changed
@@ -71,6 +71,22 @@ def get_initial_peek_view(
     game_session_id: UUID,
 ):
     return game.get_initial_peek_view(
+        session,
+        user,
+        game_session_id
+    )
+
+@router.get(
+    "/{game_session_id}/current-action-private-view",
+    status_code=status.HTTP_200_OK,
+    response_model=DrawPilePrivateView
+)
+def get_current_action_private_view(
+    session: SessionDep,
+    user: ActiveUserDep,
+    game_session_id: UUID,
+):
+    return game.get_current_action_private_view(
         session,
         user,
         game_session_id

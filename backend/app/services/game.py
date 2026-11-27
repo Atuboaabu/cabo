@@ -788,4 +788,55 @@ def draw_from_drawpile(
     except Exception:
         session.rollback()
         raise
+
+def get_current_action_private_view(
+    session: Session,
+    user_account: UserAccount,
+    game_session_id: UUID,
+)->DrawPilePrivateView:
+    try:
+        game_session, game_player = game_context.get_locked_game_context(
+            session,
+            user_account,
+            game_session_id
+        )
+
+        if (game_session.state != "Playing" or 
+            game_session.phase != "PlayerTurn"):
+            raise exceptions.InvalidGameStateException()
+
+        game_turn = session.execute(
+            select(GameTurn).where(
+                GameTurn.game_session_id == game_session.id,
+                GameTurn.ended_at.is_(None)
+            )
+        ).scalar_one_or_none()
+        if game_turn is None:
+            raise exceptions.GameNotAccessibleException()
+        if game_turn.state != "AwaitingCardDecision":
+            raise exceptions.GameTurnStateErrorException()
+        if game_turn.deadline_at <= datetime.now(timezone.utc):
+            raise exceptions.GameTurnTimeoutException()
+        if (game_turn.main_card_id is None or
+            game_turn.main_card_source is None or
+            game_turn.main_card_source != "DrawPile"):
+            raise exceptions.InvalidGameStateException()
+        if game_turn.game_player_id != game_player.id:
+            raise exceptions.RequesterWrongException()
         
+        game_card = session.execute(
+            select(GameCard).where(
+                GameCard.id == game_turn.main_card_id,
+                GameCard.game_session_id == game_session_id
+            )
+        ).scalar_one_or_none()
+        if game_card is None:
+            raise exceptions.InvalidGameStateException()
+
+        result = DrawPilePrivateView(value=game_card.value)
+
+        session.commit()
+        return result 
+    except Exception:
+        session.rollback()
+        raise
