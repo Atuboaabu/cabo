@@ -117,6 +117,7 @@ BUSINESS_REJECTIONS = {
     exceptions.GameTurnTimeoutException: "GAMETURN_TIMEOUT",
     exceptions.GameTurnStateErrorException: "GAMETURN_STATE_ERROR",
     exceptions.NoDiscardPileException: "NO_DISCARDPILE",
+    exceptions.InvalidReplaceTargetException: "INVALID_REPLACE_TARGET",
 }
 
 def initial_peek_command(
@@ -600,7 +601,7 @@ def execute_take_from_discardpile_command(
             request_id
         )
 
-def sigle_card_replace_command(
+def single_card_replace_command(
     session: Session,
     user_account: UserAccount,
     game_session_id: UUID,
@@ -698,7 +699,7 @@ def sigle_card_replace_command(
         session.rollback()
         raise
 
-def execute_sigle_card_replace_command(
+def execute_single_card_replace_command(
     token: str,
     game_session_id: UUID,
     request_id: UUID,
@@ -710,7 +711,7 @@ def execute_sigle_card_replace_command(
             token
         )
 
-        return sigle_card_replace_command(
+        return single_card_replace_command(
             session,
             user,
             game_session_id,

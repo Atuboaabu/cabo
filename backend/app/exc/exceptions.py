@@ -106,3 +106,6 @@ class GameTurnStateErrorException(Exception):
 
 class NoDiscardPileException(Exception):
     pass
+
+class InvalidReplaceTargetException(Exception):
+    pass

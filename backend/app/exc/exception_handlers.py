@@ -445,3 +445,16 @@ def register_exception_handlers(app: FastAPI)->None:
                 "detail": "No discardpile" 
             }
         )
+
+    @app.exception_handler(exceptions.InvalidReplaceTargetException)
+    async def invalid_replace_target_handle(
+        request: Request,
+        exc: exceptions.InvalidReplaceTargetException
+    ):
+        return JSONResponse(
+            status_code = status.HTTP_409_CONFLICT,
+            content = {
+                "code": "INVALID_REPLACE_TARGET",
+                "detail": "Invalid replace target" 
+            }
+        )

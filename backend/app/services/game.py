@@ -964,9 +964,20 @@ def apply_single_card_replace(
         )
     ).scalar_one_or_none()
     if old_card is None:
-        raise exceptions.InvalidGameStateException()
+        raise exceptions.InvalidReplaceTargetException()
     
-    discard_position = main_card.position
+    max_discard_position = session.execute(
+        select(func.max(GameCard.position)).where(
+            GameCard.game_session_id == game_session.id,
+            GameCard.location == "DiscardPile"
+        )
+    ).scalar_one_or_none()
+    
+    discard_position = (
+        max_discard_position + 1
+        if max_discard_position is not None
+        else 0
+    )
     hand_position = old_card.position
 
     old_card.location = "DiscardPile"

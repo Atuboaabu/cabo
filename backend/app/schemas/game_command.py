@@ -83,6 +83,7 @@ class SingleCardReplaceCommandOutcome(BaseModel):
 
 class SingleCardReplaceCommandRequest(BaseModel):
     request_id: UUID
+    position: int = Field(ge=0)
 
 class SingleCardReplaceCommandPayload(BaseModel):
     model_config = ConfigDict(
@@ -90,4 +91,4 @@ class SingleCardReplaceCommandPayload(BaseModel):
         extra="forbid"
     )
 
-    position: int = Field(ge=0, le=3)
+    position: int = Field(ge=0)
