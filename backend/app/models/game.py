@@ -1,6 +1,8 @@
 import uuid
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import ForeignKey, String, func, DateTime, CheckConstraint, Index, text, UniqueConstraint
+from sqlalchemy import (ForeignKey, String, func, DateTime,
+                        CheckConstraint, Index, text,
+                        UniqueConstraint, Boolean)
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from datetime import datetime
 from typing import Any
@@ -179,6 +181,12 @@ class GameCard(Base):
             """,
             name="ck_game_cards_owner_game_player_id_valid"
         ),
+        CheckConstraint(
+            "(location = 'DiscardPile' AND face_up = TRUE) OR " \
+            "(location = 'DrawPile' AND face_up = FALSE) OR " \
+            "(location IN ('PendingAction', 'Hand'))",
+            name="ck_game_cards_face_up_valid"
+        )
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -214,6 +222,12 @@ class GameCard(Base):
         DateTime(timezone=True),
         server_default=func.now(),
         nullable=False
+    )
+
+    face_up: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False
     )
 
 class GameTurn(Base):

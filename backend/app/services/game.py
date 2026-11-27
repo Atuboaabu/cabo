@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select, exists, update, func
 from datetime import datetime, timezone, timedelta
 import random
+from collections import defaultdict
 
 from app.models import (UserAccount, Room, RoomMember,
                         GameSession, GamePlayer, GameCard,
@@ -10,8 +11,8 @@ from app.models import (UserAccount, Room, RoomMember,
 from app.exc import exceptions
 from app.schemas import (GameStartResponse, InitialPeekResult,
                          InitialPeekCompleteResult, InitialPeekTimeoutResult,
-                         GamePlayerView, GameView, FaceDownCardView,
-                         DrawPileView, DiscardPileView, DrawPilePrivateView, 
+                         GamePlayerView, GameView, FaceDownCardView, FaceUpCardView,
+                         CardView, DrawPileView, DiscardPileView, DrawPilePrivateView, 
                          ActiveTurnView, InitialPeekCardView,
                          InitialPeekPrivateView, TakeFromDiscardPileResult)
 from app.database import engine
@@ -489,35 +490,48 @@ def get_game_view(
             )
         ).all()
 
-        players_views = [
-            GamePlayerView(
-                account_id=game_player.account_id,
-                username=username,
-                seat_index=game_player.seat_index,
-                hand_cards=[
-                    FaceDownCardView(
-                        position=game_card.position,
-                        face_up=False
-                    )
-                    for game_card, player_id in players_hand_cards
-                    if game_player.id == player_id
-                ],
-                initial_peek_completed=game_player.initial_peek_completed,
-                initial_peek_confirmed_positions=[
-                    game_card.position
-                    for game_card, player_id in players_hand_cards
-                    for card_id in [
-                        game_player.initial_peek_1st_card_id,
-                        game_player.initial_peek_2nd_card_id
-                    ]
-                    if (game_session.phase == "InitialPeek"
-                        and game_player.id == player_id
-                        and card_id is not None
-                        and game_card.id == card_id)
-                ]
+        hand_cards_by_playerid: dict[UUID, list[CardView]] = defaultdict(list)
+        for game_card, player_id in players_hand_cards:
+            game_card = (
+                FaceUpCardView(
+                    position=game_card.position,
+                    face_up=True,
+                    value=game_card.value
+                )
+                if game_card.face_up
+                else
+                FaceDownCardView(
+                    position=game_card.position,
+                    face_up=False
+                )
             )
-            for game_player, username in players_info
-        ]
+            hand_cards_by_playerid[player_id].append(game_card)
+
+        players_views: list[GamePlayerView] = []
+        for game_player, username in players_info:
+            hand_cards = hand_cards_by_playerid.get(game_player.id)
+
+            players_views.append(
+                GamePlayerView(
+                    account_id=game_player.account_id,
+                    username=username,
+                    seat_index=game_player.seat_index,
+                    hand_cards=hand_cards,
+                    initial_peek_completed=game_player.initial_peek_completed,
+                    initial_peek_confirmed_positions=[
+                        game_card.position
+                        for game_card, player_id in players_hand_cards
+                        for card_id in [
+                            game_player.initial_peek_1st_card_id,
+                            game_player.initial_peek_2nd_card_id
+                        ]
+                        if (game_session.phase == "InitialPeek"
+                            and game_player.id == player_id
+                            and card_id is not None
+                            and game_card.id == card_id)
+                    ]
+                )
+            )
 
         draw_pile_card_count = session.execute(
             select(func.count()).where(
