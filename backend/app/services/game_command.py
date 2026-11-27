@@ -107,6 +107,10 @@ BUSINESS_REJECTIONS = {
     exceptions.InvalidPeekTargetException: "INVALID_PEEK_TARGET",
     exceptions.RepeatedPeekException: "REPEATED_PEEK",
     exceptions.InitialPeekCountExceedException: "PEEK_LIMIT_EXCEEDED",
+    exceptions.RequesterWrongException: "REQUESTER_WRONG",
+    exceptions.DrawPileExhaustedException: "DRAWPILE_EXHAUSTED",
+    exceptions.GameTurnTimeoutException: "GAMETURN_TIMEOUT",
+    exceptions.GameTurnStateErrorException: "GAMETURN_STATE_ERROR",
 }
 
 def initial_peek_command(
@@ -444,9 +448,7 @@ def draw_from_drawpile_command(
 
         request.status = "Accepted"
         request.decided_at = datetime.now(timezone.utc)
-        request.result_payload = {
-            "value": draw_pile_result.value,
-        }
+        request.result_payload = {}
         session.commit()
 
         return DrawPilePrivateViewCommandOutCome(
